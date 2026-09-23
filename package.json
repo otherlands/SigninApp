@@ -1,0 +1,9 @@
+{
+  "name": "lan-sign-in-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Simple LAN-only staff sign-in kiosk",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
