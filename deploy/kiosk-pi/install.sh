@@ -34,8 +34,10 @@ echo "== 2 kiosk user =="
 id kiosk >/dev/null 2>&1 || useradd --create-home --shell /usr/sbin/nologin kiosk
 usermod -aG video,render,input,tty kiosk
 systemctl enable --now seatd >/dev/null 2>&1 || true
-# no login prompt on the screen the kiosk owns
+# no login prompt on the screen the kiosk owns; on a Desktop image also stop the desktop's display manager
 systemctl disable --now getty@tty1.service >/dev/null 2>&1 || true
+for dm in lightdm gdm3 sddm greetd; do systemctl disable --now "$dm" >/dev/null 2>&1 || true; done
+systemctl set-default multi-user.target >/dev/null 2>&1 || true
 
 echo "== 3 kiosk unit =="
 START="$URL/?device=$DEV"; [ -n "$TOK" ] && START="$START&cardToken=$TOK"
@@ -66,11 +68,10 @@ RestartSec=3
 UMask=0077
 
 [Install]
-WantedBy=graphical.target
+WantedBy=multi-user.target
 EOF
 chmod 0600 /etc/systemd/system/signin-kiosk.service
 systemctl daemon-reload
-systemctl set-default graphical.target >/dev/null 2>&1 || true
 systemctl enable signin-kiosk >/dev/null
 systemctl restart signin-kiosk
 echo "  unit installed (mode 0600), $( [ -n "$TOK" ] && echo 'card token handed in' || echo 'no card token — USB reader will be refused until KIOSK_CARD_TOKEN is given')"

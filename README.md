@@ -296,23 +296,26 @@ switch), runs on the estate's normal rails, and costs less than a mid-range tabl
 fitted, staff tap a card by the door and never touch the kiosk; it is there for visitors, the on-site list, the
 red roll-call banner, and as a card-reader fallback.
 
-**Parts (prices approximate — check The Pi Hut / Pimoroni before ordering):**
+**Parts — ordered from The Pi Hut 2026-09-26 (£234.30 inc. VAT, all in stock that day):**
 
-| Part | ~£ | Note |
+| Part | £ | Note |
 | --- | --- | --- |
-| Raspberry Pi 5, 4 GB (a Pi 4 from a drawer is fine) | 55 | 64-bit Raspberry Pi OS **Lite** (no desktop needed) |
-| Raspberry Pi **Touch Display 2** (7", 720×1280 capacitive) | 50 | official; one ribbon to the DSI port; portrait or landscape |
-| PoE: official PoE+ HAT for your Pi, **or** a PoE→USB-C splitter (5 V / 3 A) | 15–25 | splitter works with any Pi and any PoE port (UniFi US-24-250W or the SG350X) |
-| Case for Pi + Touch Display 2, wall/VESA mount | 15–25 | |
-| micro-SD 16 GB+ (A2) | 8 | |
+| Raspberry Pi 5, **2 GB** | 62.40 | plenty for one Chromium page; only 2/8/16 GB were offered |
+| **Argon Industria HMI 10CS** — 10" 1280×800 optically-bonded 10-point touch display **in a solid aluminium enclosure for Pi 5**, panel/VESA mount, ports re-routed to one edge, HAT room | 120.00 | the wall case and the screen in one box; the official 7" Touch Display 2 was out of stock and the 10" has no case yet |
+| **Argon Industria PoE+ HAT** — 802.3af/at, 5 V 5 A, made for the Industria cases, 3-pin header powers the HMI screen | 19.20 | one Ethernet cable = power + network |
+| Argon THRML 30 mm Active Cooler | 5.20 | Argon's guide calls it essentially mandatory with the PoE+ HAT; the case's passive cooling column cannot be fitted alongside a HAT |
+| Raspberry Pi 32 GB micro-SD (ships with RPi OS Desktop pre-installed) | 27.50 | **re-flash it with Imager as Lite** (step 1) — the pre-installed Desktop image runs a first-boot wizard that needs a keyboard and has SSH off; the installer also copes with Desktop if you skip this |
 | USB-203 card reader (already have) | — | fallback for people without the door reader / forgotten card |
+| Cat 6 Ethernet cable to the nearest PoE port | ~5–10 | measure the run |
 
 **Build (someone with a screwdriver; ~20 min + a 10-min script):**
 
 1. **Flash the SD** with Raspberry Pi Imager: *Raspberry Pi OS Lite (64-bit)*. In Imager's settings set hostname
    `door-kiosk`, a user + password, **enable SSH**, locale `Europe/London`. Wi-Fi is not needed — it will be wired.
-2. **Assemble**: display ribbon into the Pi's DSI port (Touch Display 2 comes with the cable and standoffs),
-   Pi + display into the case, PoE HAT on the header **or** the PoE splitter's USB-C into the Pi's power port.
+2. **Assemble** (Argon's guide is at wiki.argon40.com → Industria HMI): fit the THRML active cooler to the Pi 5 (**leave the
+   case's passive cooling column out** — it and a HAT cannot both fit), seat the PoE+ HAT on the header, plug the HMI
+   screen's power lead into the HAT's 3-pin 5 V header and its ribbon into the Pi's DSI port, then close the Pi into the
+   enclosure. The internal IO board brings Ethernet/USB out on one edge — that edge faces the cable run.
 3. **Plug in one Ethernet cable** from a PoE port on the Corporate network. The Pi boots (rainbow screen, then text).
 4. **From a PC**: `ssh <user>@door-kiosk.local` (or the address UniFi shows for `door-kiosk`), then:
    ```bash
@@ -323,7 +326,8 @@ red roll-call banner, and as a card-reader fallback.
    The script installs `cage` + Chromium, creates a `kiosk` user, writes `signin-kiosk.service` (root-only, holds the
    token), disables the tty login on the screen, stops console blanking, enables node_exporter on `:9100`, and proves
    the service is active. After the reboot the screen shows the sign-in page and never sleeps.
-5. **Portrait**: add `video=DSI-1:panel_orientation=right_up` to `/boot/firmware/cmdline.txt` and reboot (check the exact
+5. **Orientation**: the HMI 10CS panel is native landscape 1280×800, so no rotation should be needed for the kiosk page. If it
+   comes up rotated, add `video=DSI-1:panel_orientation=<value>` to `/boot/firmware/cmdline.txt` and reboot (check the exact
    token against the Raspberry Pi "display rotation" docs for your OS release — not verified here).
 6. **Card reader**: plug the USB-203 into a USB port. Present a card: an un-enrolled one makes the page say "Card … is not
    assigned to anyone" and Admin shows it under "Last unknown card seen" — proof that reader → page → token → server works.
