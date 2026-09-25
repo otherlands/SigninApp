@@ -11,7 +11,12 @@
 #include "config.h"
 
 // Log to both the native-USB CDC port and UART0 so a bench UART lead sees everything
-#define LOG(...) do { Serial.printf(__VA_ARGS__); Serial0.printf(__VA_ARGS__); } while (0)
+#define LOG(...)                     \
+    do                               \
+    {                                \
+        Serial.printf(__VA_ARGS__);  \
+        Serial0.printf(__VA_ARGS__); \
+    } while (0)
 
 Adafruit_PN532 nfc(PIN_PN532_IRQ, PIN_PN532_RESET, &Wire);
 Preferences prefs;
@@ -185,16 +190,25 @@ void setup()
 
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
     probeNfc();
-    if (!nfcReady)
-        led(LED_FAIL);
     ensureWifi();
-    led(LED_IDLE);
+}
+
+// Resting colour, re-asserted every loop so the guide's LED table stays true: purple no Wi-Fi, orange no PN532, dim blue ready.
+void steadyLed()
+{
+    if (WiFi.status() != WL_CONNECTED)
+        led(LED_NOWIFI);
+    else if (!nfcReady)
+        led(LED_FAIL);
+    else
+        led(LED_IDLE);
 }
 
 void loop()
 {
     ensureWifi();
     handleFireButton();
+    steadyLed();
 
     if (WiFi.status() == WL_CONNECTED && !serverChecked)
         checkServer();
@@ -205,8 +219,8 @@ void loop()
     {
         lastStatus = millis();
         LOG("[status] up %lus wifi=%s ip=%s rssi=%d nfc=%s events=%u\n", millis() / 1000,
-                      WiFi.status() == WL_CONNECTED ? "up" : "down", WiFi.localIP().toString().c_str(), WiFi.RSSI(),
-                      nfcReady ? "ready" : "absent", eventCounter);
+            WiFi.status() == WL_CONNECTED ? "up" : "down", WiFi.localIP().toString().c_str(), WiFi.RSSI(),
+            nfcReady ? "ready" : "absent", eventCounter);
     }
 
     if (!nfcReady)
@@ -225,4 +239,3 @@ void loop()
         handleCard(uidToHex(uid, uidLength));
     }
 }
-
