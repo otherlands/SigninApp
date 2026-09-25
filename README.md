@@ -26,7 +26,10 @@ The original one-file JSON version is preserved in git history (`git show 6eab63
 | `4712791` | 2026-09-25 | v3.2: Prometheus `/metrics` (counts only), lone-worker flag, ALL SAFE state — so the estate's Prometheus/Alertmanager on platform-a watches the register (see "Estate integration") |
 | `05a94db` | 2026-09-25 | v3.3: **Teams webhook** (roll-call start / all-safe / end cards in seconds), **visitor pre-registration** (one-tap arrival), kiosk **lone-worker banner**, new estate-wide design, `deploy/install-ubuntu-vm.sh` |
 | `b764fd7` | 2026-09-25 | tests pin every env-derived setting (an exported `ADMIN_PIN` in the shell had turned a run red) |
-| (next) | 2026-09-25 | README: step-by-step Ubuntu install for the Proxmox VM |
+| `2a5bfe8` | 2026-09-25 | README: step-by-step Ubuntu install for the Proxmox VM |
+| `6acdf1e` `cea6d33` | 2026-09-25 | installer pipefail fix; **first live install** on Proxmox CT 106 `signin` (192.168.101.102) |
+| `f3120c8` `636cd94` | 2026-09-25 | **Door-reader firmware built and flashed for the first time** (ESP32-S3): bench-tolerant PN532, health check, steady LEDs, dual log; `WIRING.md` build guide; fire button proven live |
+| (next) | 2026-09-26 | README: ESP32 flash / test / LED section |
 
 Home: `https://github.com/tobygladman2/SigninApp` (also mirrored at `otherlands/SigninApp`; the
 development clone's `origin` has both as push URLs so one push updates both).
@@ -276,7 +279,7 @@ through, and superseded snapshots are collapsed so a long outage does not replay
 | **Wall tablet** running `/` in kiosk/fullscreen mode | you probably have one | no | Any Android/iPad/old laptop. Add to home screen — the manifest gives a "Fire roll call" shortcut. |
 | **USB "keyboard-wedge" NFC/RFID reader** plugged into the tablet or a mini PC | tens of pounds | no | These readers type the card UID + Enter as if they were a keyboard. The kiosk detects the fast burst and posts `cardUid`. Set the token once via Admin → "Set card-reader token on this device". Assign cards in Admin by presenting the card with the cursor in the person's box. Unknown cards are logged and shown in Admin for one-click assignment. **Reader in use: YARONGTECH USB-203** (label: IC 13.56 MHz, USB, output format 8H10D-1). See "Card reader — what has been verified" below. |
 | **NFC stickers** for `/tap` | pence | no | Write the URL `http://<server>/tap` to an NTAG213 sticker on the door frame (painted frame or wood, not the steel strike plate). Works with staff phones on the office Wi-Fi: first tap asks for your name and remembers it on that phone; every later tap toggles you in/out. Give the server a fixed IP or hostname **before** writing any stickers. Write and lock stickers with an NFC phone and a tag-writing app; the USB-203 cannot write tags (wedge readers are output-only). A PC/SC reader-writer such as an ACR122U-class device is optional for desk writing — do not issue any "writable UID" fobs bundled with such kits to staff, because the UID is the person's identity here. |
-| **ESP32-S3 + PN532 door reader** (`firmware/door-reader/`) | ~£15 | yes | Posts card UIDs with a persistent `eventKey` counter; a held button starts a roll call; RGB LED shows result. **Built and flashed 2026-09-25** (ESP32-S3 16 MB, via a CH343 UART lead, `pio run -t upload --upload-port COMxx`): joins the IOT Wi-Fi and reads `GET /api/health -> 200` from the CT 106 server; logs to both native USB and UART0; a missing PN532 is reported once and re-probed every 30 s (the button still works without it). **PN532 module arrives Sat 2026-09-26** — wire I2C: PN532 `SDA`→GPIO 8, `SCL`→GPIO 9, `VCC`→3V3, `GND`→GND, DIP switches to **I2C** (on the common red Elechouse-style boards that is SEL0=ON, SEL1=OFF — read the table printed on the module before trusting this); reboot; expect `[nfc] PN5xx firmware x.y ready`, then present a card → Admin shows it under "Last unknown card seen". Fire button: momentary switch GPIO 4 → GND, hold 1.5 s. |
+| **ESP32-S3 + PN532 door reader** (`firmware/door-reader/`) | ~£15 | yes | Posts card UIDs with a persistent `eventKey` counter; a held button starts a roll call; RGB LED shows state. **Built, flashed and bench-proven 2026-09-25** — see "ESP32 door reader — flash, test, LEDs" below. **To build one: [firmware/door-reader/WIRING.md](firmware/door-reader/WIRING.md)** (parts, DIP switches, 4 + 2 wires, LED meanings, tests, fixes, mounting — written for someone with a screwdriver and no computer). PN532 module arrives Sat 2026-09-26. |
 | **Starting the roll call without touching the fire panel** (we have no access to it) | £0 – ~£20 | no | Three ways, in order of preference: (1) the **START ROLL CALL** button on `/fire` from any phone — this is the primary path and is what was tested; (2) a **stand-alone wall button at the exit or assembly point** — a Shelly Plus i4 / Shelly BLU Button / any device that can call a URL, configured to `POST /api/fire/start` with body `{"source":"webhook","by":"exit button"}` and header `X-Api-Token`; (3) the **hold-button on the ESP32 door reader**. All three are idempotent: a second press while a roll call is open returns `alreadyOpen` and changes nothing. If panel access is ever granted later, the same endpoint accepts a relay-driven trigger — nothing else needs to change. |
 | **Second box for the mirror** | any spare Pi/VM | no | `REPLICA=1` + `MIRROR_TOKEN`. Gives a full working `/fire` (with SAFE/MISSING ticks) off-site. `/fire` has no login today, so an internet-facing replica needs a PIN or VPN first — not built. |
 | **SharePoint copy** | £0 (existing M365) | no | Server pushes `who-is-on-site.txt`, `roster.json` and today's CSV to a SharePoint folder after every change. Staff open it in the SharePoint/Teams app. See "SharePoint off-site copy" above. |
@@ -294,6 +297,63 @@ through, and superseded snapshots are collapsed so a long outage does not replay
 | 7-byte-UID tags (NTAG213 stickers) on this reader | **Not yet tried.** Test that it types 10 stable digits and that two different stickers give different numbers before relying on it |
 
 The kiosk's built-in check: present an un-enrolled card at `/` and it should say "Card 3175933060 is not assigned to anyone"; Admin then shows it under "Last unknown card seen". That single scan proves reader → browser listener → server → token together.
+
+### ESP32 door reader — flash, test, LEDs (2026-09-25)
+
+**Board:** ESP32-S3 DevKitC-class, 16 MB flash, 8 MB PSRAM, MAC `14:c1:9f:d1:32:e4`, flashed through a
+CH343 UART lead (Windows `COM42`). The native USB port (`303A:1001`) also works for flashing but can leave
+the chip parked in ROM after the reset (see the tools note); the UART lead avoids that.
+
+**Flash (PC with PlatformIO; ~25 s after the first build):**
+
+```powershell
+cd "D:\eRIGHT\APPS\Access Lgging\V1\firmware\door-reader"
+copy include\config.example.h include\config.h      # first time only; fill Wi-Fi, SERVER_URL, API_TOKEN (git-ignored)
+& "$env:USERPROFILE\.platformio\penv\Scripts\pio.exe" run -t upload --upload-port COM42
+python tools\listen_door_reader.py COM42 40          # passive listen (DTR/RTS held low), 40 s
+```
+
+`API_TOKEN` must equal the server's; check without printing either: compare `sha256` of the two values
+(done 2026-09-25, prefix `996eb5985a4e` both sides). Build size: RAM 14 %, flash 27 %.
+
+**What a healthy boot prints** (to the UART lead *and* the native USB port):
+
+```
+[wifi] connecting to IOT
+[server] http://192.168.101.102:3000/api/health -> 200
+[status] up 30s wifi=up ip=192.168.16.205 rssi=-67 nfc=absent events=0
+[nfc] PN532 not found on I2C (SDA 8 SCL 9) - button still works; retrying every 30 s
+```
+
+The `[status]` line repeats every 30 s. With the PN532 wired the `[nfc]` line becomes `[nfc] PN5xx firmware x.y ready`
+and `nfc=ready`. Without a PN532 the firmware probes once, retries every 30 s and never polls the empty bus
+(before this fix the Arduino core logged ~60 I2C errors a second and hid every other line).
+
+**LEDs (built-in RGB, held steady by the firmware, event flashes on top):**
+
+| LED | State |
+| --- | --- |
+| purple | no Wi-Fi yet / Wi-Fi lost (reconnects every 10 s) |
+| **orange steady** | Wi-Fi up, **PN532 not found** — switches not on I2C, or SDA/SCL/VCC wiring; re-probed every 30 s |
+| dim blue | ready, waiting for a card |
+| green flash (0.6 s) | card accepted — server answered 200, person signed in or out |
+| orange flash (1.2 s) | card refused — unknown card (404), bad token (401), or server unreachable |
+| red 3 s | fire roll call started from the button |
+
+**Tests done 2026-09-25 (all against the live CT 106 server):**
+
+| Test | Result |
+| --- | --- |
+| Compile + upload | SUCCESS, hash verified, three flashes in a row |
+| Wi-Fi join (IOT) | up in <30 s, RSSI −67 to −78 on the bench |
+| `GET /api/health` from the board | **200** every boot |
+| Fire button (GPIO 4 grounded ~2 s, no button fitted) | **roll call opened on the server at 22:58:18Z**, `source=esp32`, `by=door button`; ended from the API 22:59:10Z |
+| PN532 absent | reported once, `nfc=absent`, LED orange, no log flood |
+| Card read | **not yet** — PN532 arrives 2026-09-26 |
+
+**Not yet verified:** a real card through the PN532 (first tap should land in Admin → "Last unknown card seen"), the
+RGB LED colours on a board other than this one (`RGB_BUILTIN` must exist — on boards without it the `led()` calls compile to
+nothing), and the button's debounce with a real switch instead of a jumper.
 
 ## How the data flows and where the code runs
 
@@ -320,7 +380,7 @@ flowchart LR
   ADMINPC["MANAGER'S PC<br/>/admin  admin.js"]
   TAP["STAFF PHONE + NTAG213 sticker<br/>/tap"]
   SHAREPOINT[("eRIGHT SharePoint<br/>who-is-on-site.txt · roster.json · events-DATE.csv")]
-  ESP["ESP32-S3 + PN532<br/>firmware/door-reader (uncompiled)"]
+  ESP["ESP32-S3 + PN532<br/>firmware/door-reader (flashed 25 Sep)"]
   BTN["Wall button that calls a URL"]
   MIRROR["REPLICA=1 box<br/>read-only /fire"]
 
@@ -331,7 +391,8 @@ flowchart LR
   TAP -- "POST /api/sign {source:tap}" --> APP
   SP -. "PUT 3 files after every change<br/>(client credentials, retried 15 s)" .-> SHAREPOINT
   SHAREPOINT -. "SharePoint / Teams app over mobile data" .-> PHONE
-  ESP -. "POST /api/sign {cardUid, eventKey} · /api/fire/start" .-> APP
+  ESP -- "POST /api/fire/start {source:esp32} (button, proven 25 Sep)" --> APP
+  ESP -. "POST /api/sign {cardUid, eventKey} (awaits PN532)" .-> APP
   BTN -. "POST /api/fire/start {source:webhook}" .-> APP
   APP -. "POST /api/mirror {roster}" .-> MIRROR
 ```
@@ -416,7 +477,7 @@ ALL ACCOUNTED FOR on a 430 px phone viewport, admin expected-visitor planner; ro
 admin card assignment; wedge listener (synthesised keys). Physical reader: identified and its output format
 confirmed with two cards (table above); kiosk end-to-end with it still owed.
 
-Not tested: the physical card reader driving the kiosk page, the ESP32 reading a real card (firmware compiled, flashed and health-checked against the live server on 2026-09-25; the PN532 arrives 2026-09-26), a physical webhook button,
+Not tested: the physical card reader driving the kiosk page, the ESP32 reading a real card (firmware compiled, flashed, health-checked and its fire button proven against the live server on 2026-09-25 — see "ESP32 door reader"; the PN532 arrives 2026-09-26), a physical webhook button,
 the SharePoint push and the Teams webhook against the real tenant, a real Prometheus scrape from platform-a, iOS Safari specifics,
 and running for weeks (watch `data/` size; it is tiny per event).
 There is no fire-panel integration: the roll call is started by a person (or a button a person
