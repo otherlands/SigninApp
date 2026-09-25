@@ -106,11 +106,13 @@ async function load() {
         const wasActive = view?.rollcall != null;
         offline = false;
         $('#offline').classList.add('hidden');
+        $('#live').className = 'live';
         render(data);
         if (data.rollcall && !wasActive) alertUser();
     } catch {
         // Server unreachable — show the last register we saw, clearly labelled. Never a blank page during a fire.
         offline = true;
+        $('#live').className = 'live bad';
         const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
         if (cached) {
             $('#offline').textContent = `SERVER UNREACHABLE — showing the last register this device saw at ${fmtWhen(cached.at)}. Ticks are disabled until it returns.`;

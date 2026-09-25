@@ -1,6 +1,6 @@
 {
     "name": "eright-signin-v3",
-    "version": "3.1.0",
+    "version": "3.3.0",
     "private": true,
     "description": "LAN staff and visitor sign-in with fire roll call. Node only, no npm dependencies.",
     "main": "server.js",

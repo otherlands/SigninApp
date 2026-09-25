@@ -273,7 +273,7 @@ test('/metrics exposes counts only: lone worker, roll call, all-safe, off-site c
         assert.match(r.text, /^signin_local_hour (\d|1\d|2[0-3])$/m);
         assert.match(r.text, /^signin_sharepoint_configured 0$/m);
         assert.doesNotMatch(r.text, /signin_sharepoint_last_push/, 'no push yet = no series, not a fake 0');
-        assert.match(r.text, /^signin_info\{version="3\.2\.0",tz="Europe\/London"\} 1$/m);
+        assert.match(r.text, /^signin_info\{version="3\.3\.0",tz="Europe\/London"\} 1$/m);
 
         r = await call('POST', '/api/people', { name: 'Alone Person' }, H);
         const p = r.json.people[0];
@@ -312,5 +312,118 @@ test('/metrics exposes counts only: lone worker, roll call, all-safe, off-site c
         assert.match(r.text, /^signin_rollcall_open 0$/m);
         assert.doesNotMatch(r.text, /signin_rollcall_total/, 'roll-call detail series disappear when none is open');
         assert.match(r.text, /^signin_events_last_24h \d+$/m);
+    } finally { await close(); }
+});
+
+test('Teams webhook: start / all-safe / end cards are posted in order, seconds after the event, and survive a dead channel', async () => {
+    const posts = []; let down = false;
+    const fetch = async (url, init) => {
+        posts.push({ url: String(url), body: JSON.parse(init.body) });
+        return new Response(down ? 'nope' : '1', { status: down ? 503 : 200 });
+    };
+    const { app, call, close } = await boot({ fetch, teamsWebhookUrl: 'https://prod.westeurope.logic.azure.com/workflows/x/triggers/manual/paths/invoke', publicUrl: 'http://signin.example:3000/' });
+    const settle = () => new Promise(r => setTimeout(r, 80));
+    try {
+        let r = await call('POST', '/api/people', { name: 'Only Person' });
+        const p = r.json.people[0];
+        await call('POST', '/api/sign', { personId: p.id });
+        r = await call('GET', '/api/state');
+        assert.equal(r.json.loneWorker, true, 'state carries the lone-worker flag for the kiosk banner');
+        assert.equal(r.json.publicUrl, 'http://signin.example:3000');
+
+        r = await call('POST', '/api/fire/start', { source: 'fire-page', by: 'Alan' });
+        assert.equal(r.status, 201);
+        await settle();
+        assert.equal(posts.length, 1, 'start card posted without waiting for the 15 s interval');
+        const card = posts[0].body.attachments[0].content;
+        assert.equal(posts[0].body.type, 'message');
+        assert.equal(card.type, 'AdaptiveCard');
+        assert.match(card.body[0].text, /FIRE ROLL CALL STARTED/);
+        assert.equal(card.body[0].color, 'attention');
+        assert.equal(card.actions[0].url, 'http://signin.example:3000/fire');
+        assert.ok(card.body.some(b => b.type === 'FactSet' && b.facts.some(f => f.title === 'Started by' && f.value === 'Alan')));
+
+        r = await call('POST', '/api/fire/mark', { subjectType: 'staff', subjectId: p.id, status: 'safe', by: 'Alan' });
+        assert.equal(r.json.rollcall.allSafe, true);
+        await settle();
+        assert.equal(posts.length, 2);
+        assert.match(posts[1].body.attachments[0].content.body[0].text, /ALL 1 ACCOUNTED FOR/);
+        await call('POST', '/api/fire/mark', { subjectType: 'staff', subjectId: p.id, status: 'clear' });
+        await call('POST', '/api/fire/mark', { subjectType: 'staff', subjectId: p.id, status: 'safe' });
+        await settle();
+        assert.equal(posts.length, 2, 'all-safe is announced once per roll call');
+
+        down = true;
+        await call('POST', '/api/fire/end', { by: 'Alan' });
+        await settle();
+        assert.ok(posts.length >= 3, 'end card was attempted');
+        assert.equal(app.store.outboxDepth(), 1, 'failed Teams post stays queued for retry');
+        r = await call('GET', '/api/health');
+        assert.equal(r.json.teams.last.ok, false);
+        assert.match(r.json.teams.last.error, /503/);
+        r = await call('GET', '/metrics');
+        assert.match(r.text, /^signin_teams_configured 1$/m);
+        assert.match(r.text, /^signin_teams_last_send_ok 0$/m);
+
+        down = false;
+        const flushed = await app.flushOutbox();
+        assert.equal(flushed.sent, 1);
+        assert.equal(app.store.outboxDepth(), 0);
+        assert.match(posts[posts.length - 1].body.attachments[0].content.body[0].text, /ROLL CALL ENDED/);
+        assert.equal(posts[posts.length - 1].body.attachments[0].content.body[0].color, 'good');
+    } finally { await close(); }
+});
+
+test('expected visitors: admin pre-registers, the tablet lists today only, one tap signs in with a badge', async () => {
+    const { app, call, close } = await boot({ adminPin: 'pin' });
+    const H = { 'X-Admin-Pin': 'pin' };
+    try {
+        let r = await call('POST', '/api/people', { name: 'Host Person' }, H);
+        const host = r.json.people[0];
+        const today = app.localDay(new Date().toISOString());
+        const tomorrow = app.localDay(new Date(Date.now() + 86400_000).toISOString());
+
+        r = await call('POST', '/api/expected', { name: 'Jo Bloggs', company: 'ACME', hostId: host.id, vehicle: 'ab12cde', note: 'server room' });
+        assert.equal(r.status, 401, 'pre-registration needs the admin PIN');
+        r = await call('POST', '/api/expected', { name: 'Jo Bloggs', company: 'ACME', hostId: host.id, vehicle: 'ab12cde', note: 'server room' }, H);
+        assert.equal(r.status, 201);
+        assert.equal(r.json.expected.day, today);
+        assert.equal(r.json.expected.hostName, 'Host Person');
+        assert.equal(r.json.expected.vehicle, 'AB12CDE');
+        const jo = r.json.expected;
+        r = await call('POST', '/api/expected', { name: 'Later Person', day: tomorrow }, H);
+        assert.equal(r.status, 201);
+        assert.equal(r.json.list.length, 2, 'admin list spans the next 14 days');
+
+        r = await call('GET', '/api/expected');
+        assert.equal(r.status, 200, 'tablet needs no PIN');
+        assert.deepEqual(r.json.map(e => e.name), ['Jo Bloggs'], 'tablet sees today only');
+        r = await call('GET', '/api/state');
+        assert.equal(r.json.expectedToday, 1);
+        r = await call('GET', '/metrics');
+        assert.match(r.text, /^signin_expected_visitors_today 1$/m);
+
+        r = await call('POST', `/api/expected/${jo.id}/arrive`, { source: 'kiosk' });
+        assert.equal(r.status, 201);
+        assert.equal(r.json.visitor.badge, 1);
+        assert.equal(r.json.visitor.company, 'ACME');
+        assert.equal(r.json.visitor.hostName, 'Host Person');
+        assert.equal(r.json.state.inCount, 1);
+        assert.equal(r.json.state.expectedToday, 0);
+        r = await call('POST', `/api/expected/${jo.id}/arrive`, {});
+        assert.equal(r.status, 409, 'cannot arrive twice');
+        r = await call('GET', '/api/expected');
+        assert.equal(r.json.length, 0);
+        r = await call('GET', '/api/expected?all=1', undefined, H);
+        const arrived = r.json.find(e => e.id === jo.id);
+        assert.ok(arrived.arrivedVisitorId && arrived.arrivedAt, 'admin view keeps the arrived row');
+        r = await call('GET', '/api/events?limit=5', undefined, H);
+        assert.match(r.json[0].note, /pre-registered/);
+
+        const later = r.json && (await call('GET', '/api/expected?all=1', undefined, H)).json.find(e => e.name === 'Later Person');
+        r = await call('DELETE', `/api/expected/${later.id}`, undefined, H);
+        assert.equal(r.status, 200);
+        r = await call('GET', '/api/expected?all=1', undefined, H);
+        assert.equal(r.json.length, 1);
     } finally { await close(); }
 });

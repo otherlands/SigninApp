@@ -15,6 +15,8 @@ server.listen(PORT, HOST, () => {
   if (!app.cfg.adminPin) console.log('  ADMIN_PIN not set: /admin is open to anyone on the LAN');
   if (app.cfg.mirrorUrl) console.log(`  mirroring roster to ${app.cfg.mirrorUrl}`);
   if (app.sharepoint.configured) console.log(`  SharePoint copy -> ${app.sharepoint.site} / ${app.sharepoint.folder}`);
+  if (app.cfg.teamsWebhookUrl) console.log('  Teams webhook: roll-call start / all-safe / end are posted to the channel');
+  if (app.cfg.publicUrl) console.log(`  public URL for phones/Teams buttons: ${app.cfg.publicUrl}`);
 });
 
 if (app.hasOutboxSink()) {

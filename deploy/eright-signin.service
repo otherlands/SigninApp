@@ -13,7 +13,9 @@ Environment=NODE_ENV=production
 Environment=PORT=3000
 Environment=TZ_NAME=Europe/London
 # Fill these in /etc/eright-signin.env (chmod 600): ADMIN_PIN, API_TOKEN, MIRROR_URL, MIRROR_TOKEN,
+# TEAMS_WEBHOOK_URL (roll-call start / all-safe / end cards), PUBLIC_URL (the address phones use),
 # and for the SharePoint copy: SP_TENANT_ID, SP_CLIENT_ID, SP_CLIENT_SECRET, SP_SITE, SP_DRIVE, SP_FOLDER
+# deploy/install-ubuntu-vm.sh writes this file with generated ADMIN_PIN/API_TOKEN on first run.
 EnvironmentFile=-/etc/eright-signin.env
 ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning server.js
 Restart=always

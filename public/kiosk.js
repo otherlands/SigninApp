@@ -11,6 +11,10 @@ function render(data) {
     $('#inCount').textContent = data.inCount;
     $('#countPill').classList.toggle('warn', data.staleCount > 0);
     $('#rollcallBanner').classList.toggle('hidden', !data.rollcall);
+    $('#loneBanner').classList.toggle('hidden', !data.loneWorker || Boolean(data.rollcall));
+    $('#expectedBanner').classList.toggle('hidden', !data.expectedToday);
+    if (data.expectedToday) $('#expectedText').textContent = `${data.expectedToday} visitor${data.expectedToday === 1 ? '' : 's'} expected today`;
+    $('#live').className = 'live';
 
     peopleEl.replaceChildren(...data.people.map(person => {
         const b = document.createElement('button');
@@ -42,7 +46,7 @@ function render(data) {
 
 async function load() {
     try { render(await api('GET', '/api/state')); }
-    catch { notice(noticeEl, 'Unable to reach the sign-in server.', true, 0); }
+    catch { $('#live').className = 'live bad'; notice(noticeEl, 'Unable to reach the sign-in server.', true, 0); }
 }
 
 async function sign(body, label) {

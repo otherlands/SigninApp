@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#0f1c1b">
+    <meta name="theme-color" content="#0a0d1a">
     <title>Sign in</title>
     <link rel="icon" href="/favicon.svg">
     <link rel="manifest" href="/manifest.webmanifest">
@@ -14,14 +14,28 @@
 <body class="kiosk">
     <header class="top">
         <div class="brand">
-            <h1 id="company">…</h1>
-            <div class="clock" id="clock"></div>
+            <div class="logo"></div>
+            <div>
+                <h1 id="company">…</h1>
+                <div class="clock" id="clock"></div>
+            </div>
         </div>
-        <div class="count-pill" id="countPill"><span>On site</span><b id="inCount">–</b></div>
+        <div class="row">
+            <span class="live" id="live"><i></i> live</span>
+            <div class="count-pill" id="countPill"><span>On site</span><b id="inCount">–</b></div>
+        </div>
     </header>
 
-    <div id="rollcallBanner" class="notice big hidden" style="background:var(--red);color:white">
-        FIRE ROLL CALL IN PROGRESS — go to the assembly point. Do not sign out.
+    <div id="rollcallBanner" class="banner red hidden" role="alert"><span class="ico">🚨</span>
+        <div>FIRE ROLL CALL IN PROGRESS — go to the assembly point.<small>Do not stop to sign out. Open the roll call on any phone to tick people SAFE.</small></div>
+        <a class="go" href="/fire">Open roll call →</a>
+    </div>
+    <div id="loneBanner" class="banner amber hidden"><span class="ico">🧍</span>
+        <div>LONE WORKER — you are the only person signed in.<small>Let someone know you are here, keep your phone on you, and sign out when you leave.</small></div>
+    </div>
+    <div id="expectedBanner" class="banner blue hidden"><span class="ico">👋</span>
+        <div><span id="expectedText"></span><small>Visitors who were pre-registered can sign in with one tap.</small></div>
+        <a class="go" href="/visitor">Visitor sign in →</a>
     </div>
 
     <section class="panel">

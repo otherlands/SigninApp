@@ -1,4 +1,4 @@
-# eRIGHT Sign-In v3.2 — staff & visitor register with fire roll call
+# eRIGHT Sign-In v3.3 — staff & visitor register with fire roll call
 
 Small LAN system for a single door: 8 staff, visitors, and — because eRIGHT has **no designated
 fire marshal** — a register that anyone at the assembly point can open on a phone and that is
@@ -23,7 +23,8 @@ The original one-file JSON version is preserved in git history (`git show 6eab63
 | `bf3ec40` | 2026-09-25 | README: card reader identified and verified facts recorded |
 | `bfb38e9` | 2026-09-25 | v3.1: SharePoint off-site copy via Microsoft Graph, per-sink outbox |
 | `0836ed2` | 2026-09-25 | README: v3.1 no-marshal framing, data-flow diagram, health fields |
-| (next) | 2026-09-25 | v3.2: Prometheus `/metrics` (counts only), lone-worker flag, ALL SAFE state — so the estate's Prometheus/Alertmanager on platform-a watches the register (see "Estate integration") |
+| `4712791` | 2026-09-25 | v3.2: Prometheus `/metrics` (counts only), lone-worker flag, ALL SAFE state — so the estate's Prometheus/Alertmanager on platform-a watches the register (see "Estate integration") |
+| (next) | 2026-09-25 | v3.3: **Teams webhook** (roll-call start / all-safe / end cards in seconds), **visitor pre-registration** (one-tap arrival), kiosk **lone-worker banner**, new estate-wide design, `deploy/install-ubuntu-vm.sh` |
 
 Home: `https://github.com/tobygladman2/SigninApp` (also mirrored at `otherlands/SigninApp`; the
 development clone's `origin` has both as push URLs so one push updates both).
@@ -32,11 +33,12 @@ Developed for eRIGHT Ltd, 8 staff, one door.
 ## First run checklist
 
 1. Install Node 22.13 or newer (`node --version`). Developed and tested on 24.13.1.
-2. `npm test` — expect `pass 15`.
+2. `npm test` — expect `pass 17`.
 3. Set `ADMIN_PIN` and `API_TOKEN` before exposing the server to the office LAN (see `deploy/`). Give the server a fixed IP or hostname.
 4. `npm start`, open `/admin`, set the company name and fire notice, add the staff.
 5. Put `/` on the door tablet in fullscreen. Put `/fire` on **every** staff phone's home screen (there is no single marshal) and print a QR code to it for the assembly-point sign.
 6. Set the `SP_*` variables so the register is copied to SharePoint after every change (see "SharePoint off-site copy"); confirm the first push in Admin → Off-site copies.
+7. Set `TEAMS_WEBHOOK_URL` (see "Teams channel") so a roll call starting reaches every staff phone in seconds; press START then END on `/fire` and watch both cards land.
 7. Delete any `data/` folder copied from a development machine before first real use; it holds test rows.
 8. Back up `data/signin.sqlite` (and its `-wal` file) — it is the whole register. A small UPS on the server and router lets the last sign-outs reach SharePoint after the mains go.
 
@@ -44,16 +46,16 @@ Developed for eRIGHT Ltd, 8 staff, one door.
 
 | URL | Who uses it | What it does |
 | --- | --- | --- |
-| `/` | Wall tablet by the door | One big button per staff member. Tap = toggle in/out. Shows visitors on site, on-site count, and a red banner while a roll call is running. Listens for a USB card reader. |
-| `/visitor` | Visitor at the tablet | Name, company, who they're visiting, vehicle reg, fire-notice tick box. Issues a daily badge number. |
+| `/` | Wall tablet by the door | One big button per staff member. Tap = toggle in/out. Shows visitors on site, on-site count, a red banner while a roll call is running, an amber **LONE WORKER** banner when exactly one member of staff is in with no visitors, and a blue "n visitors expected today" banner when someone is pre-registered. Listens for a USB card reader. |
+| `/visitor` | Visitor at the tablet | **Expected today — tap your name** (pre-registered visitors arrive with one tap: name, company, host already filled) or the full form: name, company, who they're visiting, vehicle reg, fire-notice tick box. Issues a daily badge number. |
 | `/fire` | Anyone's phone, any LAN device | Live "who is on site". **START ROLL CALL** freezes the register at that instant; then SAFE / MISSING per person with the ticker's name and time; counts of safe / missing / not yet seen; the banner turns **green "ALL n ACCOUNTED FOR"** the moment every person on the frozen register is marked SAFE; END writes a summary event. The live view says **LONE WORKER** when exactly one member of staff is on site with no visitors. If the server dies mid-fire the page shows the last register **that device** saw, clearly labelled — a fallback only, not relied on (see SharePoint). Print-friendly. |
-| `/admin` | Manager's PC | Add/remove staff, assign card UIDs, close forgotten sign-outs, sign visitors out, company name, fire notice, event log, CSV export, roll-call history. Optional PIN. |
+| `/admin` | Manager's PC | Add/remove staff, assign card UIDs, close forgotten sign-outs, sign visitors out, **pre-register expected visitors** (next 14 days, shows who has arrived), company name, fire notice, event log, CSV export, roll-call history, off-site copy + Teams status. Optional PIN. |
 | `/tap` | Staff phone via NFC sticker | The original SigninApp's zero-hardware path: sticker URL → phone remembers who you are → each tap toggles you. |
 
 ## Run
 
 ```powershell
-npm test          # 15 tests, in-memory SQLite + fake Graph, ~0.3 s
+npm test          # 17 tests, in-memory SQLite + fake Graph + fake Teams, ~0.4 s
 npm start         # http://<ip>:3000
 ```
 
@@ -67,10 +69,65 @@ Environment variables (all optional):
 | `MIRROR_URL`, `MIRROR_TOKEN` | main server pushes a roster snapshot to the mirror after every change (queued in SQLite, retried every 15 s). |
 | `REPLICA=1` | this instance is the read-only mirror. Serves `/fire` from the last snapshot and can run its own roll call. Refuses sign-ins. |
 | `TZ_NAME` | IANA zone for "today" and CSV times, default `Europe/London`. |
+| `TEAMS_WEBHOOK_URL` | **Teams channel push** — a Workflows webhook URL. Roll-call start, all-safe and end are posted as Adaptive Cards within seconds (queued in SQLite, retried every 15 s for up to an hour). See "Teams channel". |
+| `PUBLIC_URL` | The address staff phones use, e.g. `http://192.168.101.40:3000`. Gives Teams cards an **Open the roll call** button. |
 | `SP_TENANT_ID`, `SP_CLIENT_ID`, `SP_CLIENT_SECRET`, `SP_SITE`, `SP_DRIVE`, `SP_FOLDER` | **SharePoint off-site copy** — see the section below. All four of tenant/client/secret/site must be set for it to switch on. |
 
 Data lives in `data/signin.sqlite` (+ `-wal`), git-ignored. Back it up. `deploy/` has systemd
 units for main and mirror.
+
+## Teams channel — the roll call reaches every phone in seconds (v3.3)
+
+The Prometheus alert (below) is the belt; this is the braces, and it is faster. `fireStart()` queues an
+Adaptive Card and flushes the queue on the next tick, so the card is in the channel about as fast as Teams
+delivers it — no 30 s scrape in the way. Three cards, and only three, so nobody mutes the channel:
+
+| When | Card |
+| --- | --- |
+| START ROLL CALL pressed (any source: phone, wall button, ESP32) | red **🚨 FIRE ROLL CALL STARTED** — count on the register, started by, from where, "if you are OFF SITE stay away and phone in", button **Open the roll call** |
+| the tick that makes everyone SAFE (once per roll call) | green **✅ ALL n ACCOUNTED FOR** |
+| END ROLL CALL pressed | green **ROLL CALL ENDED — everyone accounted for**, or amber **⚠️ … n NOT ACCOUNTED FOR**, with safe/missing/not-seen and duration |
+
+**Setup (2 minutes, any channel owner):** in Teams open the channel → ⋯ → **Workflows** → search
+"Post to a channel when a webhook request is received" → name it, pick the team + channel → copy the HTTPS
+URL it gives you → put it in `/etc/eright-signin.env` as `TEAMS_WEBHOOK_URL=` and set `PUBLIC_URL=` →
+`sudo systemctl restart eright-signin`. Test by pressing START and END on `/fire`. Admin → Off-site copies
+shows the last post's result; `signin_teams_last_send_ok` is on `/metrics`.
+
+**Verified:** card shape, ordering, immediate flush, once-per-roll-call all-safe, retry after a 503, health and
+metrics — all against a fake webhook in `test/app.test.js`. **Not yet verified:** a real Teams tenant; the first
+real START/END is that evidence. The message uses the `attachments[].contentType =
+application/vnd.microsoft.card.adaptive` shape that Workflows webhooks accept (the same family the estate's
+Alertmanager `msteamsv2` receiver posts).
+
+## Visitor pre-registration (v3.3)
+
+Admin → **Expected visitors**: name, company, who they are visiting, day (default today), vehicle, note. The
+kiosk shows "n visitors expected today"; `/visitor` shows **Expected today — tap your name** above the form.
+One tap signs the visitor in with their details and a badge number, records `pre-registered` on the event,
+and marks the plan row arrived (Admin shows the time). Rows for the next 14 days are listed; unarrived rows
+can be removed. The tablet only ever sees today's not-yet-arrived names (the same trust level as the staff
+grid it already shows); the 14-day plan needs the admin PIN. `signin_expected_visitors_today` is on `/metrics`.
+
+## Where to run it — platform-a, brain-a, fast-a, or a VM on the Proxmox host?
+
+Recommendation: **a small Ubuntu VM on the Proxmox host (`hpe`), with an optional read-only mirror on
+platform-a.** The reasoning, from the estate's own record:
+
+| Host | Verdict | Why |
+| --- | --- | --- |
+| **platform-a** | No for the primary; **yes for a `REPLICA=1` mirror** | It already carries Qdrant, the retriever (MemoryHigh 40 GB, OOM-killed several mornings), nginx, Prometheus and the GPU that has been lost five times since 5 Sep — each recovery is a **mains power cycle via the smart plug**. A fire register must not share a box that gets plug-cycled. As a mirror it is ideal: a second, always-warm `/fire` on the box everyone already reaches through the hub, on a different failure domain from the VM. |
+| **brain-a** | No | Laptop, RTX 3080 Ti, vLLM holds ~14 GB, password-only SSH, mains-on does not boot it after a cut. |
+| **fast-a** | No | Ollama box, password-only SSH, no NOPASSWD for the sign-in user. |
+| **Proxmox VM** (`hpe`, 192.168.101.135, on the container switch ports 3–4; a "Sign-in testing" VM is already on the hub tile) | **Yes — primary** | Dedicated, tiny (1 vCPU / 1 GB is plenty for Node + SQLite), Proxmox snapshots before every upgrade, isolated from the AI workload, on the Corporate VLAN where the door tablet and staff phones already are. `deploy/install-ubuntu-vm.sh` does the whole install in one run and prints the address the estate's Prometheus needs. Give the VM a DHCP reservation. |
+
+Honest limits: every one of these boxes is inside the building. The out-of-building copy is SharePoint
+(and Teams for the alert itself); a UPS on the VM host and the router buys the last sign-outs their exit.
+
+**Mirror on platform-a (H, later):** clone the repo to `/opt/eright-signin` there, install
+`deploy/eright-signin-mirror.service` with `MIRROR_TOKEN` in `/etc/eright-signin-mirror.env`, port 3000 free
+or change it, and set `MIRROR_URL`/`MIRROR_TOKEN` on the VM. platform-a then serves `/fire` from the last
+roster even if the VM is dark.
 
 ## SharePoint off-site copy (the "building is on fire" view)
 
@@ -201,13 +258,17 @@ flowchart LR
 
 | Method | Path | Body / notes |
 | --- | --- | --- |
-| GET | `/api/health` | `{ok, version, replica, outbox, mirror, sharepoint:{configured, site, folder, last:{at, ok, files|error}}}` |
+| GET | `/api/health` | `{ok, version, replica, outbox, mirror, teams:{configured, last:{at, ok, error?}}, publicUrl, sharepoint:{configured, site, folder, last:{at, ok, files|error}}}` |
 | GET | `/metrics` | Prometheus text exposition, **counts only — no names** (see "Estate integration"). No PIN or token: it is meant to be scraped. |
-| GET | `/api/state` | full kiosk state |
+| GET | `/api/state` | full kiosk state incl. `loneWorker`, `expectedToday`, `publicUrl` |
 | GET | `/api/roster` | who is on site now (staff + visitors) + `loneWorker` (exactly one staff, no visitors) |
 | POST | `/api/sign` | `{personId}` or `{cardUid}`; optional `direction:"in"|"out"`, `eventKey`, `source`, `device`, `note` |
 | POST | `/api/visitors` | `{name, company?, hostId?, vehicle?}` → 201 with badge |
 | POST | `/api/visitors/:id/out` | |
+| GET | `/api/expected` | pre-registered visitors expected **today**, not yet arrived (no PIN — the tablet uses it). `?all=1` + admin PIN: next 14 days incl. arrived rows |
+| POST | `/api/expected` | admin: `{name, company?, hostId?, day?: YYYY-MM-DD, vehicle?, note?}` → 201 |
+| DELETE | `/api/expected/:id` | admin; unarrived rows only |
+| POST | `/api/expected/:id/arrive` | tablet: signs the visitor in from the plan row → 201 `{visitor, state}`; 409 if already arrived |
 | GET | `/api/fire` | open roll call (with marks) + live roster |
 | POST | `/api/fire/start` | `{source, by?}` → 201, or 200 `alreadyOpen` |
 | POST | `/api/fire/mark` | `{subjectType:"staff"|"visitor", subjectId, status:"safe"|"missing"|"clear", by?}` |
@@ -253,13 +314,18 @@ card capture, duplicate `eventKey`, double-assignment refusal; visitor badges an
 call snapshot immunity, marks, end summary; stale flagging and admin close; admin PIN scope;
 main→mirror push and replica read-only behaviour; BST/GMT midnight; static serving and path
 traversal; SharePoint sink (token, site, default/named library, three uploads, snapshot collapse,
-upload failure, wrong secret, unconfigured) against a fake Graph endpoint. Driven by hand in a
-browser: kiosk tap, roll call start/mark/end with red state, kiosk banner, admin card assignment,
-wedge listener (synthesised keys). Physical reader: identified and its output format confirmed with
-two cards (table above); kiosk end-to-end with it still owed.
+upload failure, wrong secret, unconfigured) against a fake Graph endpoint; `/metrics` series and the
+lone-worker / all-safe flags; Teams cards (start / all-safe once / end, immediate flush, order kept, retry after
+503, health + metrics) against a fake webhook; visitor pre-registration (admin-only writes, tablet sees today
+only, one-tap arrival with badge, double-arrival refused, removal). Driven by hand in a browser on 2026-09-25
+(v3.3 design): kiosk with expected-visitor banner, visitor page with tap-to-arrive tile, fire page red→green
+ALL ACCOUNTED FOR on a 430 px phone viewport, admin expected-visitor planner; roll call start/mark/end;
+admin card assignment; wedge listener (synthesised keys). Physical reader: identified and its output format
+confirmed with two cards (table above); kiosk end-to-end with it still owed.
 
 Not tested: the physical card reader driving the kiosk page, the ESP32 firmware (never compiled), a physical webhook button,
-the SharePoint push against a real tenant, iOS Safari specifics, and running for weeks (watch `data/` size; it is tiny per event).
+the SharePoint push and the Teams webhook against the real tenant, a real Prometheus scrape from platform-a, iOS Safari specifics,
+and running for weeks (watch `data/` size; it is tiny per event).
 There is no fire-panel integration: the roll call is started by a person (or a button a person
 presses), never by the alarm itself.
 
@@ -270,4 +336,5 @@ presses), never by the alarm itself.
 - The mirror is a roster replica, not a full database replica; roll calls run on the mirror are stored on the mirror.
 - The SharePoint copy is read-only at the assembly point: anyone can see who was inside, nobody can tick names off there.
 - Decided against: running the server on an ESP32 (a full C++ rewrite that would still be inside the building) and a fire-panel relay (no access to the panel).
-- Visitor pre-registration, contractor inductions, and photo badges are not built.
+- Contractor inductions and photo badges are not built. Pre-registration is (v3.3) but has no e-mail/QR invite to the visitor yet.
+- The Teams card goes to one channel. Per-person push (e.g. SMS to a lone worker's own phone) is not built.

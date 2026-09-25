@@ -58,7 +58,32 @@ function render(data) {
         row.append(b); $('#visitorList').append(row);
     }
     $('#cardTokenState').textContent = localStorage.getItem('cardToken') ? 'token stored on this device' : 'no token stored';
+    $('#exHost').replaceChildren($('#exHost').firstElementChild, ...data.people.map(p => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name; return o; }));
+    if (!$('#exDay').value) $('#exDay').value = localToday();
 }
+
+function localToday() {
+    const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function renderExpected(list) {
+    const today = localToday();
+    $('#expectedCount').textContent = list.filter(e => !e.arrivedVisitorId).length;
+    $('#expectedList').innerHTML = list.length ? '' : '<p class="muted">None planned.</p>';
+    for (const e of list) {
+        const row = document.createElement('div'); row.className = 'visitor-row';
+        const when = e.day === today ? 'today' : new Date(e.day + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+        row.innerHTML = `<span><b>${esc(e.name)}</b> <span class="chip ${e.arrivedVisitorId ? 'green' : (e.day === today ? 'amber' : '')}">${e.arrivedVisitorId ? 'arrived ' + esc(SI.fmtTime(e.arrivedAt)) : when}</span><br>
+            <small class="muted">${esc([e.company, e.hostName ? 'visiting ' + e.hostName : null, e.vehicle, e.note].filter(Boolean).join(' · '))}</small></span>`;
+        if (!e.arrivedVisitorId) {
+            const b = document.createElement('button'); b.className = 'small ghost'; b.textContent = 'Remove';
+            b.onclick = () => api('DELETE', `/api/expected/${e.id}`).then(loadExpected).catch(showError);
+            row.append(b);
+        }
+        $('#expectedList').append(row);
+    }
+}
+async function loadExpected() { renderExpected(await api('GET', '/api/expected?all=1')); }
 
 async function loadEvents() {
     const events = await api('GET', '/api/events?limit=100');
@@ -85,6 +110,10 @@ async function loadHealth() {
                 : `<b style="color:var(--amber)">FAILED</b> at ${esc(fmtWhen(last.at))} — ${esc(last.error)}`));
     } else parts.push('SharePoint: not configured (SP_* environment variables)');
     parts.push(h.mirror ? `Mirror → ${esc(h.mirror.url)}` : 'Mirror: not configured');
+    if (h.teams) {
+        const t = h.teams.last;
+        parts.push('Teams channel: ' + (!t ? 'configured, nothing sent yet' : t.ok ? `<b style="color:var(--in)">ok</b> last post ${esc(fmtWhen(t.at))}` : `<b style="color:var(--amber)">FAILED</b> ${esc(fmtWhen(t.at))} — ${esc(t.error)} (retrying)`));
+    } else parts.push('Teams channel: not configured (TEAMS_WEBHOOK_URL) — roll-call start / all-safe / end will not be pushed');
     parts.push(`Queued snapshots waiting: ${h.outbox}`);
     $('#offsiteState').innerHTML = parts.join('<br>');
 }
@@ -94,9 +123,17 @@ async function load() {
         render(await api('GET', '/api/state'));
         await loadEvents();
         await loadHealth();
+        await loadExpected();
         $('#pinPanel').classList.add('hidden');
     } catch (error) { showError(error); }
 }
+
+$('#expectedForm').onsubmit = (e) => {
+    e.preventDefault();
+    api('POST', '/api/expected', { name: $('#exName').value, company: $('#exCompany').value, hostId: $('#exHost').value, day: $('#exDay').value, vehicle: $('#exVehicle').value, note: $('#exNote').value })
+        .then(d => { renderExpected(d.list); for (const id of ['exName', 'exCompany', 'exVehicle', 'exNote']) $('#' + id).value = ''; notice(noticeEl, `${d.expected.name} expected ${d.expected.day}.`); })
+        .catch(showError);
+};
 
 $('#pinForm').onsubmit = (e) => { e.preventDefault(); adminPin.set($('#pin').value); load(); };
 $('#personForm').onsubmit = (e) => { e.preventDefault(); api('POST', '/api/people', { name: $('#personName').value }).then(d => { render(d); $('#personName').value = ''; }).catch(showError); };

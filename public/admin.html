@@ -5,6 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Admin · Sign in</title>
+    <meta name="theme-color" content="#0a0d1a">
     <link rel="icon" href="/favicon.svg">
     <link rel="stylesheet" href="/style.css">
 </head>
@@ -12,8 +13,11 @@
 <body>
     <header class="top">
         <div class="brand">
-            <h1 id="company">Admin</h1>
-            <div class="clock" id="clock"></div>
+            <div class="logo"></div>
+            <div>
+                <h1 id="company">Admin</h1>
+                <div class="clock" id="clock"></div>
+            </div>
         </div>
         <div class="row">
             <div class="count-pill"><span>On site</span><b id="inCount">–</b></div>
@@ -48,6 +52,19 @@
 
             <h2 style="margin-top:24px">Visitors on site</h2>
             <div id="visitorList"></div>
+
+            <h2 style="margin-top:24px">Expected visitors <span class="chip" id="expectedCount">0</span></h2>
+            <p class="muted">Pre-register a visitor and they sign in with one tap on the door tablet — name, company and host already filled in. Shows the next 14 days.</p>
+            <form id="expectedForm" class="form-grid" autocomplete="off">
+                <label>Name<input id="exName" required maxlength="80" placeholder="Visitor name"></label>
+                <label>Company<input id="exCompany" maxlength="80"></label>
+                <label>Visiting<select id="exHost"><option value="">—</option></select></label>
+                <label>Day<input id="exDay" type="date" required></label>
+                <label>Vehicle<input id="exVehicle" maxlength="16" style="text-transform:uppercase"></label>
+                <label>Note<input id="exNote" maxlength="200" placeholder="e.g. server room, needs parking"></label>
+                <button class="primary" type="submit">Add</button>
+            </form>
+            <div id="expectedList" style="margin-top:10px"></div>
 
             <h2 style="margin-top:24px">Settings</h2>
             <form id="companyForm"><label>Company name<input id="companyName" maxlength="80"></label><button

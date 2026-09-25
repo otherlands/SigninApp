@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#0f1c1b">
+    <meta name="theme-color" content="#0a0d1a">
     <title>Visitor sign in</title>
     <link rel="icon" href="/favicon.svg">
     <link rel="stylesheet" href="/style.css">
@@ -13,11 +13,20 @@
 <body>
     <header class="top">
         <div class="brand">
-            <h1 id="company">…</h1>
-            <div class="clock" id="clock"></div>
+            <div class="logo"></div>
+            <div>
+                <h1 id="company">…</h1>
+                <div class="clock" id="clock"></div>
+            </div>
         </div>
         <a href="/"><button class="ghost">Back to staff</button></a>
     </header>
+
+    <section class="panel hidden" id="expectedPanel">
+        <h2>Expected today — tap your name</h2>
+        <div id="expected" class="expected"></div>
+        <p class="muted" style="margin-top:12px">Not on the list? Use the form below.</p>
+    </section>
 
     <section class="panel" id="formPanel">
         <h2>Visitor sign in</h2>
@@ -53,12 +62,33 @@
         const { $, esc, api, startClock, notice } = SI;
         startClock($('#clock'));
         let state;
+        function welcome(visitor) {
+            $('#formPanel').classList.add('hidden');
+            $('#expectedPanel').classList.add('hidden');
+            $('#donePanel').classList.remove('hidden');
+            $('#doneText').innerHTML = `Welcome, ${esc(visitor.name)}.<br>Your badge is <b style="font-size:3rem">${visitor.badge}</b>`;
+            if (navigator.vibrate) navigator.vibrate(60);
+            setTimeout(() => location.href = '/', 20000);
+        }
         async function load() {
             state = await api('GET', '/api/state');
             $('#company').textContent = state.companyName;
             $('#fireNotice').textContent = state.fireNotice;
             $('#host').replaceChildren($('#host').firstElementChild, ...state.people.map(p => {
                 const o = document.createElement('option'); o.value = p.id; o.textContent = p.name + (p.signedIn ? '' : ' (not in)'); return o;
+            }));
+            const expected = await api('GET', '/api/expected');
+            $('#expectedPanel').classList.toggle('hidden', !expected.length);
+            $('#expected').replaceChildren(...expected.map(e => {
+                const b = document.createElement('button'); b.className = 'person';
+                b.innerHTML = `<strong>${esc(e.name)}</strong><span>${esc([e.company, e.hostName ? `visiting ${e.hostName}` : null].filter(Boolean).join(' · ') || 'pre-registered')}</span>`;
+                b.onclick = async () => {
+                    if (!confirm(`Sign in as ${e.name}?\n\n${state.fireNotice}`)) return;
+                    b.disabled = true;
+                    try { const data = await api('POST', `/api/expected/${e.id}/arrive`, { source: 'kiosk' }); welcome(data.visitor); }
+                    catch (error) { b.disabled = false; notice($('#notice'), error.message, true); }
+                };
+                return b;
             }));
         }
         $('#visitorForm').onsubmit = async (e) => {
@@ -67,10 +97,7 @@
                 const data = await api('POST', '/api/visitors', {
                     name: $('#name').value, company: $('#company').value, hostId: $('#host').value, vehicle: $('#vehicle').value, source: 'kiosk'
                 });
-                $('#formPanel').classList.add('hidden');
-                $('#donePanel').classList.remove('hidden');
-                $('#doneText').innerHTML = `Welcome, ${esc(data.visitor.name)}.<br>Your badge is <b style="font-size:3rem">${data.visitor.badge}</b>`;
-                setTimeout(() => location.href = '/', 20000);
+                welcome(data.visitor);
             } catch (error) { notice($('#notice'), error.message, true); }
         };
         load().catch(() => notice($('#notice'), 'Unable to reach the sign-in server.', true, 0));
