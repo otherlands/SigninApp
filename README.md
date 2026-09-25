@@ -11,6 +11,27 @@ on every event. Deliberately **not** taken from Home Presence: camera motion, BL
 and the inferred "auto-away" sign-out — a fire register must only change when a human acts.
 The original one-file JSON version is preserved in git history (`git show 6eab63a:server.js`).
 
+## Repository and history
+
+| Commit | Date | What |
+| --- | --- | --- |
+| `6eab63a` | 2026-09-23 | Toby Gladman's original SigninApp: one JSON file, kiosk, admin, NFC `/tap` |
+| `9fd70dc` | 2026-09-25 | Read-only `/rollcall` page and amber "signed in before today" flag added to the original |
+| `588942d` | 2026-09-25 | Full v3 rewrite described in this README |
+
+Home: `https://github.com/tobygladman2/SigninApp` (also mirrored at `otherlands/SigninApp`).
+Developed for eRIGHT Ltd, 8 staff, one door.
+
+## First run checklist
+
+1. Install Node 22.13 or newer (`node --version`). Developed and tested on 24.13.1.
+2. `npm test` — expect `pass 9`.
+3. Set `ADMIN_PIN` and `API_TOKEN` before exposing the server to the office LAN (see `deploy/`).
+4. `npm start`, open `/admin`, set the company name and fire notice, add the staff.
+5. Put `/` on the door tablet in fullscreen, and `/fire` on the marshal's phone home screen.
+6. Delete any `data/` folder copied from a development machine before first real use; it holds test rows.
+7. Back up `data/signin.sqlite` (and its `-wal` file) — it is the whole register.
+
 ## Pages
 
 | URL | Who uses it | What it does |
