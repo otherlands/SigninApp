@@ -78,6 +78,17 @@ async function visitorOut(v) {
 
 // Card readers plugged into the kiosk tablet/PC behave as a keyboard. If the server has an
 // API_TOKEN set, put it in localStorage.cardToken on the kiosk once (admin page has a button).
+// Kiosk-mode devices have no address bar, so the Pi installer hands it in once as ?cardToken=…;
+// it is stored and stripped from the URL before anything else runs (the server never logs query strings).
+{
+    const q = new URLSearchParams(location.search);
+    if (q.has('cardToken')) {
+        const t = q.get('cardToken');
+        if (t) localStorage.setItem('cardToken', t); else localStorage.removeItem('cardToken');
+        history.replaceState(null, '', location.pathname);
+    }
+    if (q.has('device') && q.get('device')) localStorage.setItem('deviceName', q.get('device').slice(0, 40));
+}
 listenForCardWedge((uid) => {
     const token = localStorage.getItem('cardToken') || '';
     api('POST', '/api/sign', { cardUid: uid, source: 'card' }, token ? { 'X-Api-Token': token } : {})

@@ -29,7 +29,8 @@ The original one-file JSON version is preserved in git history (`git show 6eab63
 | `2a5bfe8` | 2026-09-25 | README: step-by-step Ubuntu install for the Proxmox VM |
 | `6acdf1e` `cea6d33` | 2026-09-25 | installer pipefail fix; **first live install** on Proxmox CT 106 `signin` (192.168.101.102) |
 | `f3120c8` `636cd94` | 2026-09-25 | **Door-reader firmware built and flashed for the first time** (ESP32-S3): bench-tolerant PN532, health check, steady LEDs, dual log; `WIRING.md` build guide; fire button proven live |
-| (next) | 2026-09-26 | README: ESP32 flash / test / LED section |
+| `ccf7a13` | 2026-09-26 | README: ESP32 flash / test / LED section |
+| (next) | 2026-09-26 | **Door kiosk = Raspberry Pi** (no battery, PoE, cage + Chromium): `deploy/kiosk-pi/install.sh`, parts list and build steps; kiosk page accepts a one-time `?cardToken=` hand-in |
 
 Home: `https://github.com/tobygladman2/SigninApp` (also mirrored at `otherlands/SigninApp`; the
 development clone's `origin` has both as push URLs so one push updates both).
@@ -276,13 +277,65 @@ through, and superseded snapshots are collapsed so a long outage does not replay
 
 | Option | Cost class | Firmware? | Notes |
 | --- | --- | --- | --- |
-| **Wall tablet** running `/` in kiosk/fullscreen mode | you probably have one | no | Any Android/iPad/old laptop. Add to home screen — the manifest gives a "Fire roll call" shortcut. |
+| **Door kiosk: Raspberry Pi + 7" touch display, PoE** (`deploy/kiosk-pi/`) | ~£140–160 | no (one script) | **The recommended kiosk (decided 2026-09-26, old tablet gone).** No lithium battery on the wall, one PoE cable for power + network, SSH-manageable, Chromium full-screen on `/` inside `cage`; the USB-203 plugs straight in. See "Door kiosk — Raspberry Pi build" below. |
+| **Any tablet / old phone** running `/` in kiosk mode | £0 if you have one | no | Stop-gap only: Android + Fully Kiosk Browser (start URL `http://192.168.101.102:3000/`, kiosk lock, keep screen on). Consumer tablets left on charge for years are a swollen-battery risk — wrong device for a fire register long-term. |
 | **USB "keyboard-wedge" NFC/RFID reader** plugged into the tablet or a mini PC | tens of pounds | no | These readers type the card UID + Enter as if they were a keyboard. The kiosk detects the fast burst and posts `cardUid`. Set the token once via Admin → "Set card-reader token on this device". Assign cards in Admin by presenting the card with the cursor in the person's box. Unknown cards are logged and shown in Admin for one-click assignment. **Reader in use: YARONGTECH USB-203** (label: IC 13.56 MHz, USB, output format 8H10D-1). See "Card reader — what has been verified" below. |
 | **NFC stickers** for `/tap` | pence | no | Write the URL `http://<server>/tap` to an NTAG213 sticker on the door frame (painted frame or wood, not the steel strike plate). Works with staff phones on the office Wi-Fi: first tap asks for your name and remembers it on that phone; every later tap toggles you in/out. Give the server a fixed IP or hostname **before** writing any stickers. Write and lock stickers with an NFC phone and a tag-writing app; the USB-203 cannot write tags (wedge readers are output-only). A PC/SC reader-writer such as an ACR122U-class device is optional for desk writing — do not issue any "writable UID" fobs bundled with such kits to staff, because the UID is the person's identity here. |
 | **ESP32-S3 + PN532 door reader** (`firmware/door-reader/`) | ~£15 | yes | Posts card UIDs with a persistent `eventKey` counter; a held button starts a roll call; RGB LED shows state. **Built, flashed and bench-proven 2026-09-25** — see "ESP32 door reader — flash, test, LEDs" below. **To build one: [firmware/door-reader/WIRING.md](firmware/door-reader/WIRING.md)** (parts, DIP switches, 4 + 2 wires, LED meanings, tests, fixes, mounting — written for someone with a screwdriver and no computer). PN532 module arrives Sat 2026-09-26. |
 | **Starting the roll call without touching the fire panel** (we have no access to it) | £0 – ~£20 | no | Three ways, in order of preference: (1) the **START ROLL CALL** button on `/fire` from any phone — this is the primary path and is what was tested; (2) a **stand-alone wall button at the exit or assembly point** — a Shelly Plus i4 / Shelly BLU Button / any device that can call a URL, configured to `POST /api/fire/start` with body `{"source":"webhook","by":"exit button"}` and header `X-Api-Token`; (3) the **hold-button on the ESP32 door reader**. All three are idempotent: a second press while a roll call is open returns `alreadyOpen` and changes nothing. If panel access is ever granted later, the same endpoint accepts a relay-driven trigger — nothing else needs to change. |
 | **Second box for the mirror** | any spare Pi/VM | no | `REPLICA=1` + `MIRROR_TOKEN`. Gives a full working `/fire` (with SAFE/MISSING ticks) off-site. `/fire` has no login today, so an internet-facing replica needs a PIN or VPN first — not built. |
 | **SharePoint copy** | £0 (existing M365) | no | Server pushes `who-is-on-site.txt`, `roster.json` and today's CSV to a SharePoint folder after every change. Staff open it in the SharePoint/Teams app. See "SharePoint off-site copy" above. |
+
+### Door kiosk — Raspberry Pi build (decided 2026-09-26)
+
+Why a Pi and not a tablet: the kiosk must be on 24/7 on a wall for years. A tablet is a lithium battery on
+permanent charge (the wrong risk for a fire-register device), it is Wi-Fi only, and nobody can SSH into it at
+02:00. The Pi has no battery, takes one PoE cable for power **and** network (so it rides the same UPS as the
+switch), runs on the estate's normal rails, and costs less than a mid-range tablet. With the ESP32 door reader
+fitted, staff tap a card by the door and never touch the kiosk; it is there for visitors, the on-site list, the
+red roll-call banner, and as a card-reader fallback.
+
+**Parts (prices approximate — check The Pi Hut / Pimoroni before ordering):**
+
+| Part | ~£ | Note |
+| --- | --- | --- |
+| Raspberry Pi 5, 4 GB (a Pi 4 from a drawer is fine) | 55 | 64-bit Raspberry Pi OS **Lite** (no desktop needed) |
+| Raspberry Pi **Touch Display 2** (7", 720×1280 capacitive) | 50 | official; one ribbon to the DSI port; portrait or landscape |
+| PoE: official PoE+ HAT for your Pi, **or** a PoE→USB-C splitter (5 V / 3 A) | 15–25 | splitter works with any Pi and any PoE port (UniFi US-24-250W or the SG350X) |
+| Case for Pi + Touch Display 2, wall/VESA mount | 15–25 | |
+| micro-SD 16 GB+ (A2) | 8 | |
+| USB-203 card reader (already have) | — | fallback for people without the door reader / forgotten card |
+
+**Build (someone with a screwdriver; ~20 min + a 10-min script):**
+
+1. **Flash the SD** with Raspberry Pi Imager: *Raspberry Pi OS Lite (64-bit)*. In Imager's settings set hostname
+   `door-kiosk`, a user + password, **enable SSH**, locale `Europe/London`. Wi-Fi is not needed — it will be wired.
+2. **Assemble**: display ribbon into the Pi's DSI port (Touch Display 2 comes with the cable and standoffs),
+   Pi + display into the case, PoE HAT on the header **or** the PoE splitter's USB-C into the Pi's power port.
+3. **Plug in one Ethernet cable** from a PoE port on the Corporate network. The Pi boots (rainbow screen, then text).
+4. **From a PC**: `ssh <user>@door-kiosk.local` (or the address UniFi shows for `door-kiosk`), then:
+   ```bash
+   git clone https://github.com/otherlands/SigninApp.git ~/SigninApp
+   sudo KIOSK_URL=http://192.168.101.102:3000 KIOSK_CARD_TOKEN='<API_TOKEN from the server env>' bash ~/SigninApp/deploy/kiosk-pi/install.sh
+   sudo reboot
+   ```
+   The script installs `cage` + Chromium, creates a `kiosk` user, writes `signin-kiosk.service` (root-only, holds the
+   token), disables the tty login on the screen, stops console blanking, enables node_exporter on `:9100`, and proves
+   the service is active. After the reboot the screen shows the sign-in page and never sleeps.
+5. **Portrait**: add `video=DSI-1:panel_orientation=right_up` to `/boot/firmware/cmdline.txt` and reboot (check the exact
+   token against the Raspberry Pi "display rotation" docs for your OS release — not verified here).
+6. **Card reader**: plug the USB-203 into a USB port. Present a card: an un-enrolled one makes the page say "Card … is not
+   assigned to anyone" and Admin shows it under "Last unknown card seen" — proof that reader → page → token → server works.
+7. **UniFi**: DHCP reservation for `door-kiosk`. **platform-a**: add the Pi's `:9100` to Prometheus so `up{}` for it can alert
+   (the `signin` job pattern in `scripts/deploy-signin-monitoring.sh`).
+
+**How the token gets onto a device with no address bar:** the installer starts Chromium on
+`/?device=door-kiosk&cardToken=…` once; `kiosk.js` stores both in `localStorage` and immediately strips them from the URL.
+The server does not log query strings. The unit file that holds the URL is `0600 root`.
+
+**Day to day:** `journalctl -u signin-kiosk -f` · `sudo systemctl restart signin-kiosk` (page back in ~5 s) · re-run the
+installer after `git pull` to update. **Not yet verified:** nothing in this section has run on real hardware — the parts are
+not yet bought. The first Pi build is the evidence; expect to tune the rotation token and possibly the Chromium package name.
 
 ### Card reader — what has been verified (2026-09-25)
 

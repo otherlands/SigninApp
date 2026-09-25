@@ -73,7 +73,7 @@ sleep 2; systemctl is-active eright-signin
 
 echo "== 5 proof =="
 IP=$(hostname -I | awk '{print $1}')
-curl -s -m 5 "http://127.0.0.1:$PORT/api/health" | head -c 200; echo
+curl -s -m 5 "http://127.0.0.1:$PORT/api/health" | cut -c1-200; echo
 curl -s -m 5 "http://127.0.0.1:$PORT/metrics" | grep -E '^signin_(up|info)' | sed 's/^/  /'
 cat <<EOF
 
