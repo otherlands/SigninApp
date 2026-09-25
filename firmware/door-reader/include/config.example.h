@@ -9,7 +9,7 @@
 // Must match API_TOKEN on the server.
 #define API_TOKEN "change-me"
 // Appears in the event log as the device column.
-#define DEVICE_NAME "front-door-reader"
+#define DEVICE_NAME "back-door-reader"
 
 // PN532 over I2C. Check your board's silkscreen; these are typical ESP32-S3 DevKitC pins.
 #define PIN_I2C_SDA 8

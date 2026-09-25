@@ -1,7 +1,12 @@
-# eRIGHT door reader — build & wiring guide
+# eRIGHT back-door reader — build & wiring guide
 
 Anyone in the office can build this in about 20 minutes with a screwdriver and no soldering, if the
 PN532 comes with its header pins fitted (most do). Read the whole page once before touching anything.
+
+**Where it lives (decided 2026-09-26):** the **back door**. The front door has the Raspberry Pi kiosk with the
+USB card reader; this box is the independent second point — no screen, its own power, its own Wi-Fi — so a tap
+at the back door signs you in or out just the same, and the red button there starts a roll call even if the
+front kiosk is down. The event log shows `back-door-reader` on everything it does.
 
 **What it does:** staff tap their card on the reader by the door and are signed in or out on the register.
 Holding the red button for 1½ seconds starts a fire roll call from the door without touching a phone.
@@ -110,11 +115,12 @@ itself lives on the server and is backed up to SharePoint.
 
 ## Mounting
 
-Put the PN532 where the card will be tapped (it reads through a few mm of plastic — a thin case
+Back door: put the PN532 where the card will be tapped (it reads through a few mm of plastic — a thin case
 lid is fine, **not** through metal). Keep it away from the steel strike plate and door frame.
 The ESP32 can sit behind it in the same box. The button goes wherever a person leaving in a hurry
 will hit it — by the exit at shoulder height, clearly labelled **FIRE ROLL CALL — HOLD 2 s**.
-Cable-tie the USB lead so a tug does not pull a jumper.
+Cable-tie the USB lead so a tug does not pull a jumper. Check the IOT Wi-Fi reaches the back door before
+fixing anything to the wall: power the box there first and wait for the LED to leave purple.
 
 ## If it needs re-flashing (Alan / a PC with PlatformIO)
 
