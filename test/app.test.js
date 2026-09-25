@@ -4,8 +4,10 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const { createApp } = require('../lib/app');
 
+// Pin every env-derived setting: a shell that has ADMIN_PIN / TEAMS_WEBHOOK_URL exported (hit 2026-09-25) must not change results.
+const NO_ENV = { adminPin: '', apiToken: '', mirrorUrl: '', mirrorToken: '', teamsWebhookUrl: '', publicUrl: '', replica: false, sharepoint: {} };
 async function boot(options = {}) {
-    const app = createApp({ dataFile: ':memory:', ...options });
+    const app = createApp({ dataFile: ':memory:', ...NO_ENV, ...options });
     const server = http.createServer((req, res) => app.handle(req, res));
     await new Promise(r => server.listen(0, '127.0.0.1', r));
     const base = `http://127.0.0.1:${server.address().port}`;

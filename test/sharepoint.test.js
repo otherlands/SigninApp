@@ -35,7 +35,7 @@ function fakeGraph({ failUploads = false } = {}) {
 }
 
 async function boot(options = {}) {
-    const app = createApp({ dataFile: ':memory:', ...options });
+    const app = createApp({ dataFile: ':memory:', adminPin: '', apiToken: '', mirrorUrl: '', mirrorToken: '', teamsWebhookUrl: '', publicUrl: '', replica: false, sharepoint: {}, ...options });
     const server = http.createServer((req, res) => app.handle(req, res));
     await new Promise(r => server.listen(0, '127.0.0.1', r));
     const base = `http://127.0.0.1:${server.address().port}`;
