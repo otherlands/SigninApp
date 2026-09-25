@@ -41,7 +41,8 @@ git config --global --add safe.directory "$DEST" 2>/dev/null || true
 
 echo "== 3 env file =="
 if [ ! -f "$ENVF" ]; then
-  PIN=$(tr -dc 0-9 </dev/urandom | head -c 6); TOK=$(openssl rand -base64 30 | tr -d '/+=' | head -c 32)
+  # no pipes here: under `set -o pipefail` a `tr </dev/urandom | head -c N` dies of SIGPIPE (hit 2026-09-25 on CT 106)
+  PIN=$(printf '%06d' "$(( $(od -An -N4 -tu4 /dev/urandom) % 1000000 ))"); TOK=$(openssl rand -hex 16)
   cat > "$ENVF" <<EOF
 # eRIGHT Sign-In — secrets + wiring. chmod 600. Written by deploy/install-ubuntu-vm.sh $(date -u +%FT%TZ)
 ADMIN_PIN=$PIN
