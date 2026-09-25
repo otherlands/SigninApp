@@ -1,1 +1,49 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign-in admin</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css"></head><body><main class="admin"><header><a class="back" href="/">← Kiosk</a><div><p>Staff attendance</p><h1 id="company">Your Company</h1></div></header><section class="summary"><div><span id="in-count">0</span><small>signed in now</small></div><a class="button" href="/api/export">Download CSV log</a></section><div class="columns"><section class="panel"><h2>People</h2><form id="person-form"><input id="person-name" maxlength="80" placeholder="New person's name" aria-label="New person's name"><button>Add person</button></form><div id="people-list" class="people-list"></div></section><section class="panel"><h2>Recent activity</h2><div id="events" class="events"></div></section></div><section class="panel settings"><h2>Settings</h2><form id="company-form"><input id="company-name" maxlength="80" aria-label="Company name"><button>Save name</button></form><p class="hint">This system deliberately has no password. Keep both this page and the server accessible only on your trusted LAN.</p></section><p id="notice" class="notice"></p></main><script src="/admin.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Sign-in admin</title>
+    <link rel="icon" href="/favicon.svg">
+    <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+    <main class="admin">
+        <header><a class="back" href="/">← Kiosk</a>
+            <div>
+                <p>Staff attendance</p>
+                <h1 id="company">Your Company</h1>
+            </div>
+        </header>
+        <section class="summary">
+            <div><span id="in-count">0</span><small>signed in now</small></div>
+            <div><a class="button" href="/rollcall">Roll call</a> <a class="button" href="/api/export">Download CSV
+                    log</a></div>
+        </section>
+        <div class="columns">
+            <section class="panel">
+                <h2>People</h2>
+                <form id="person-form"><input id="person-name" maxlength="80" placeholder="New person's name"
+                        aria-label="New person's name"><button>Add person</button></form>
+                <div id="people-list" class="people-list"></div>
+            </section>
+            <section class="panel">
+                <h2>Recent activity</h2>
+                <div id="events" class="events"></div>
+            </section>
+        </div>
+        <section class="panel settings">
+            <h2>Settings</h2>
+            <form id="company-form"><input id="company-name" maxlength="80" aria-label="Company name"><button>Save
+                    name</button></form>
+            <p class="hint">This system deliberately has no password. Keep both this page and the server accessible only
+                on your trusted LAN.</p>
+        </section>
+        <p id="notice" class="notice"></p>
+    </main>
+    <script src="/admin.js"></script>
+</body>
+
+</html>

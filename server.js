@@ -36,7 +36,10 @@ function send(res, status, body, type = 'application/json; charset=utf-8') {
 }
 function currentStatus(data, personId) {
   const latest = data.events.find(event => event.personId === personId);
-  return latest?.type === 'in' ? { signedIn: true, since: latest.at } : { signedIn: false };
+  if (latest?.type !== 'in') return { signedIn: false };
+  // stale = still signed in from before local midnight today (forgotten sign-out, flagged never auto-closed)
+  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+  return { signedIn: true, since: latest.at, stale: new Date(latest.at) < startOfToday };
 }
 async function bodyOf(req) {
   let text = '';
@@ -89,7 +92,7 @@ const server = http.createServer(async (req, res) => {
       data.events.slice().reverse().forEach(event => { const date = new Date(event.at); lines.push([date.toLocaleDateString('en-GB'), date.toLocaleTimeString('en-GB'), event.personName, event.type === 'in' ? 'Signed in' : 'Signed out'].map(value => `"${String(value).replaceAll('"', '""')}"`).join(',')); });
       res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="sign-in-log.csv"' }); return res.end(lines.join('\n'));
     }
-    const requested = url.pathname === '/' ? '/index.html' : url.pathname === '/admin' ? '/admin.html' : url.pathname === '/tap' ? '/tap.html' : url.pathname;
+    const requested = url.pathname === '/' ? '/index.html' : url.pathname === '/admin' ? '/admin.html' : url.pathname === '/tap' ? '/tap.html' : url.pathname === '/rollcall' ? '/rollcall.html' : url.pathname;
     const file = path.resolve(publicDir, `.${requested}`);
     if (!file.startsWith(publicDir) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return send(res, 404, 'Not found', 'text/plain; charset=utf-8');
     return send(res, 200, fs.readFileSync(file), mime[path.extname(file)] || 'application/octet-stream');

@@ -16,3 +16,8 @@ Program an NFC tag with `http://VM-IP-ADDRESS:3000/tap` (prefer a stable interna
 The service listens on every network interface by default. Allow inbound TCP port 3000 in the VM firewall, but restrict it to your LAN. The `data/sign-in-data.json` file is created automatically and contains all names and the activity log; include it in VM backups.
 
 There is intentionally no password protection. Do not expose this server to the internet. If the admin page needs to be restricted later, put it behind a LAN reverse proxy or add an admin PIN/authentication layer.
+
+## Roll call page
+
+Open `http://VM-IP-ADDRESS:3000/rollcall` on the fire marshal's phone. It is read-only: a large count and the names currently signed in, refreshed every 10 seconds, with a Print button. People still signed in from before today are flagged amber as a possible forgotten sign-out; they are never signed out automatically. If the server cannot be reached the page shows the last list that device saw, clearly labelled with its time.
+
