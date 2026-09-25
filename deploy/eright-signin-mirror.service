@@ -1,6 +1,8 @@
 # /etc/systemd/system/eright-signin-mirror.service
-# Read-only mirror on a SECOND box (different building / cloud VM). Serves /fire from the last
-# roster the main server pushed, so the register survives the main site losing power.
+# OPTIONAL read-only mirror on a SECOND box (different building / cloud VM). Serves /fire from the last
+# roster the main server pushed. eRIGHT's primary off-site copy is SharePoint (SP_* vars on the main
+# unit); use this only if you also want SAFE/MISSING ticks to work with the main site dark. /fire has
+# no login, so do not expose this to the internet without a PIN or VPN in front.
 [Unit]
 Description=eRIGHT sign-in v3 (mirror)
 After=network-online.target
