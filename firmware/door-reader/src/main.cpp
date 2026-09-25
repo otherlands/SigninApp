@@ -10,6 +10,9 @@
 #include <Adafruit_PN532.h>
 #include "config.h"
 
+// Log to both the native-USB CDC port and UART0 so a bench UART lead sees everything
+#define LOG(...) do { Serial.printf(__VA_ARGS__); Serial0.printf(__VA_ARGS__); } while (0)
+
 Adafruit_PN532 nfc(PIN_PN532_IRQ, PIN_PN532_RESET, &Wire);
 Preferences prefs;
 
@@ -19,6 +22,10 @@ static unsigned long lastUidAt = 0;
 static unsigned long buttonDownAt = 0;
 static bool buttonWasDown = false;
 static unsigned long lastWifiAttempt = 0;
+static bool nfcReady = false;
+static unsigned long lastNfcProbe = 0;
+static unsigned long lastStatus = 0;
+static bool serverChecked = false;
 
 enum Led
 {
@@ -63,7 +70,7 @@ void ensureWifi()
         return;
     lastWifiAttempt = millis();
     led(LED_NOWIFI);
-    Serial.printf("[wifi] connecting to %s\n", WIFI_SSID);
+    LOG("[wifi] connecting to %s\n", WIFI_SSID);
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 }
@@ -81,11 +88,44 @@ int postJson(const char *path, const String &body)
     http.addHeader("X-Device", DEVICE_NAME);
     int status = http.POST(body);
     if (status > 0)
-        Serial.printf("[http] %s -> %d %s\n", path, status, http.getString().c_str());
+        LOG("[http] %s -> %d %s\n", path, status, http.getString().c_str());
     else
-        Serial.printf("[http] %s failed: %s\n", path, http.errorToString(status).c_str());
+        LOG("[http] %s failed: %s\n", path, http.errorToString(status).c_str());
     http.end();
     return status;
+}
+
+// One GET /api/health after Wi-Fi comes up: proves the route to the sign-in server before any card is read.
+void checkServer()
+{
+    HTTPClient http;
+    http.setTimeout(4000);
+    http.begin(String(SERVER_URL) + "/api/health");
+    int status = http.GET();
+    if (status > 0)
+        LOG("[server] %s/api/health -> %d %s\n", SERVER_URL, status, http.getString().substring(0, 120).c_str());
+    else
+        LOG("[server] %s unreachable: %s\n", SERVER_URL, http.errorToString(status).c_str());
+    http.end();
+    serverChecked = true;
+}
+
+// PN532 is optional at bench time: probe quietly, retry every 30 s, never poll an absent chip (it floods the log).
+void probeNfc()
+{
+    lastNfcProbe = millis();
+    nfc.begin();
+    uint32_t version = nfc.getFirmwareVersion();
+    if (!version)
+    {
+        if (!nfcReady)
+            LOG("[nfc] PN532 not found on I2C (SDA %d SCL %d) - button still works; retrying every 30 s\n", PIN_I2C_SDA, PIN_I2C_SCL);
+        nfcReady = false;
+        return;
+    }
+    LOG("[nfc] PN5%02X firmware %d.%d ready\n", (version >> 24) & 0xFF, (version >> 16) & 0xFF, (version >> 8) & 0xFF);
+    nfc.SAMConfig();
+    nfcReady = true;
 }
 
 String uidToHex(const uint8_t *uid, uint8_t len)
@@ -136,24 +176,17 @@ void handleFireButton()
 void setup()
 {
     Serial.begin(115200);
+    Serial0.begin(115200); // UART0 = the CH343 bench lead; Serial = native USB CDC
     delay(300);
+    LOG("\n[boot] eRIGHT door reader %s -> %s\n", DEVICE_NAME, SERVER_URL);
     pinMode(PIN_FIRE_BUTTON, INPUT_PULLUP);
     prefs.begin("door", false);
     eventCounter = prefs.getUInt("counter", 0);
 
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
-    nfc.begin();
-    uint32_t version = nfc.getFirmwareVersion();
-    if (!version)
-    {
-        Serial.println("[nfc] PN532 not found on I2C — check wiring and the board's DIP switches (I2C mode)");
+    probeNfc();
+    if (!nfcReady)
         led(LED_FAIL);
-    }
-    else
-    {
-        Serial.printf("[nfc] PN5%02X firmware %d.%d\n", (version >> 24) & 0xFF, (version >> 16) & 0xFF, (version >> 8) & 0xFF);
-        nfc.SAMConfig();
-    }
     ensureWifi();
     led(LED_IDLE);
 }
@@ -163,6 +196,27 @@ void loop()
     ensureWifi();
     handleFireButton();
 
+    if (WiFi.status() == WL_CONNECTED && !serverChecked)
+        checkServer();
+    if (WiFi.status() != WL_CONNECTED)
+        serverChecked = false;
+
+    if (millis() - lastStatus >= 30000)
+    {
+        lastStatus = millis();
+        LOG("[status] up %lus wifi=%s ip=%s rssi=%d nfc=%s events=%u\n", millis() / 1000,
+                      WiFi.status() == WL_CONNECTED ? "up" : "down", WiFi.localIP().toString().c_str(), WiFi.RSSI(),
+                      nfcReady ? "ready" : "absent", eventCounter);
+    }
+
+    if (!nfcReady)
+    {
+        if (millis() - lastNfcProbe >= 30000)
+            probeNfc();
+        delay(20);
+        return;
+    }
+
     uint8_t uid[7] = {0};
     uint8_t uidLength = 0;
     // 200 ms timeout keeps the button responsive between reads.
@@ -171,3 +225,4 @@ void loop()
         handleCard(uidToHex(uid, uidLength));
     }
 }
+

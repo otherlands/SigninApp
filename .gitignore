@@ -4,3 +4,8 @@ data/
 *.sqlite-wal
 *.sqlite-shm
 .env
+
+# firmware secrets + build output
+firmware/door-reader/include/config.h
+firmware/**/.pio/
+
