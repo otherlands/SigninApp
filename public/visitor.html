@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0f1c1b">
+    <title>Visitor sign in</title>
+    <link rel="icon" href="/favicon.svg">
+    <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+    <header class="top">
+        <div class="brand">
+            <h1 id="company">…</h1>
+            <div class="clock" id="clock"></div>
+        </div>
+        <a href="/"><button class="ghost">Back to staff</button></a>
+    </header>
+
+    <section class="panel" id="formPanel">
+        <h2>Visitor sign in</h2>
+        <form id="visitorForm" autocomplete="off">
+            <label>Your name<input id="name" required maxlength="80" autocapitalize="words"></label>
+            <label>Company<input id="company" maxlength="80"></label>
+            <label>Who are you visiting?<select id="host">
+                    <option value="">— choose —</option>
+                </select></label>
+            <label>Vehicle registration (if parked on site)<input id="vehicle" maxlength="16"
+                    autocapitalize="characters" style="text-transform:uppercase"></label>
+            <div class="panel" style="background:var(--panel-2)">
+                <h2>Fire safety</h2>
+                <p id="fireNotice"></p>
+                <label class="row" style="color:var(--text)"><input type="checkbox" id="agree" required
+                        style="width:28px;min-height:28px;flex:0 0 28px"> I have read the fire notice</label>
+            </div>
+            <button class="primary" type="submit" style="width:100%;font-size:1.2rem">Sign in</button>
+        </form>
+    </section>
+
+    <section class="panel hidden" id="donePanel">
+        <p class="notice big" id="doneText"></p>
+        <p class="muted" style="text-align:center">Please take the badge shown above. Sign out on the staff screen when
+            you leave.</p>
+        <a href="/"><button class="primary" style="width:100%">Done</button></a>
+    </section>
+
+    <p id="notice" class="notice"></p>
+
+    <script src="/shared.js"></script>
+    <script>
+        const { $, esc, api, startClock, notice } = SI;
+        startClock($('#clock'));
+        let state;
+        async function load() {
+            state = await api('GET', '/api/state');
+            $('#company').textContent = state.companyName;
+            $('#fireNotice').textContent = state.fireNotice;
+            $('#host').replaceChildren($('#host').firstElementChild, ...state.people.map(p => {
+                const o = document.createElement('option'); o.value = p.id; o.textContent = p.name + (p.signedIn ? '' : ' (not in)'); return o;
+            }));
+        }
+        $('#visitorForm').onsubmit = async (e) => {
+            e.preventDefault();
+            try {
+                const data = await api('POST', '/api/visitors', {
+                    name: $('#name').value, company: $('#company').value, hostId: $('#host').value, vehicle: $('#vehicle').value, source: 'kiosk'
+                });
+                $('#formPanel').classList.add('hidden');
+                $('#donePanel').classList.remove('hidden');
+                $('#doneText').innerHTML = `Welcome, ${esc(data.visitor.name)}.<br>Your badge is <b style="font-size:3rem">${data.visitor.badge}</b>`;
+                setTimeout(() => location.href = '/', 20000);
+            } catch (error) { notice($('#notice'), error.message, true); }
+        };
+        load().catch(() => notice($('#notice'), 'Unable to reach the sign-in server.', true, 0));
+    </script>
+</body>
+
+</html>

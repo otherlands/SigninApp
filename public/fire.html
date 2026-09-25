@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#7f1d1d">
+    <title>Fire roll call</title>
+    <link rel="icon" href="/favicon.svg">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="stylesheet" href="/style.css">
+</head>
+
+<body class="fire">
+    <div id="offline" class="offline-warning hidden"></div>
+
+    <div class="fire-banner">
+        <h1 id="title">Who is on site</h1>
+        <div class="big" id="bigCount">–</div>
+        <p id="subtitle" class="muted"></p>
+        <div class="row no-print" style="justify-content:center">
+            <button id="startBtn" class="danger" style="font-size:1.2rem;min-width:240px">START ROLL CALL</button>
+            <button id="endBtn" class="primary hidden" style="font-size:1.2rem;min-width:240px">END ROLL CALL</button>
+            <button id="printBtn" class="ghost">Print</button>
+            <a href="/" class="no-print"><button class="ghost">Kiosk</button></a>
+        </div>
+    </div>
+
+    <div id="stats" class="fire-stats hidden">
+        <div class="safe"><b id="safeCount">0</b>Safe</div>
+        <div class="missing"><b id="missingCount">0</b>Missing</div>
+        <div><b id="unaccountedCount">0</b>Not yet seen</div>
+    </div>
+
+    <label class="no-print hidden" id="byWrap">Your name (marshal)<input id="by" placeholder="e.g. Alan"
+            maxlength="60"></label>
+
+    <section class="panel">
+        <h2 id="staffHead">Staff</h2>
+        <div class="roll" id="staff"></div>
+    </section>
+    <section class="panel">
+        <h2 id="visitorHead">Visitors</h2>
+        <div class="roll" id="visitors"></div>
+    </section>
+
+    <p id="notice" class="notice"></p>
+    <p class="muted no-print" style="text-align:center;font-size:.85rem">Refreshes every 5 s · <span
+            id="updated"></span> · <span id="device"></span></p>
+
+    <script src="/shared.js"></script>
+    <script src="/fire.js"></script>
+</body>
+
+</html>

@@ -3,46 +3,79 @@
 
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Sign-in admin</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Admin · Sign in</title>
     <link rel="icon" href="/favicon.svg">
     <link rel="stylesheet" href="/style.css">
 </head>
 
 <body>
-    <main class="admin">
-        <header><a class="back" href="/">← Kiosk</a>
-            <div>
-                <p>Staff attendance</p>
-                <h1 id="company">Your Company</h1>
-            </div>
-        </header>
-        <section class="summary">
-            <div><span id="in-count">0</span><small>signed in now</small></div>
-            <div><a class="button" href="/rollcall">Roll call</a> <a class="button" href="/api/export">Download CSV
-                    log</a></div>
-        </section>
-        <div class="columns">
-            <section class="panel">
-                <h2>People</h2>
-                <form id="person-form"><input id="person-name" maxlength="80" placeholder="New person's name"
-                        aria-label="New person's name"><button>Add person</button></form>
-                <div id="people-list" class="people-list"></div>
-            </section>
-            <section class="panel">
-                <h2>Recent activity</h2>
-                <div id="events" class="events"></div>
-            </section>
+    <header class="top">
+        <div class="brand">
+            <h1 id="company">Admin</h1>
+            <div class="clock" id="clock"></div>
         </div>
-        <section class="panel settings">
-            <h2>Settings</h2>
-            <form id="company-form"><input id="company-name" maxlength="80" aria-label="Company name"><button>Save
-                    name</button></form>
-            <p class="hint">This system deliberately has no password. Keep both this page and the server accessible only
-                on your trusted LAN.</p>
+        <div class="row">
+            <div class="count-pill"><span>On site</span><b id="inCount">–</b></div>
+            <a href="/"><button class="ghost">Kiosk</button></a>
+            <a href="/fire"><button class="danger">Fire page</button></a>
+        </div>
+    </header>
+
+    <section class="panel hidden" id="pinPanel">
+        <h2>Admin PIN</h2>
+        <form id="pinForm" class="row"><input id="pin" type="password" class="grow" placeholder="Enter the admin PIN"
+                autocomplete="off"><button class="primary">Unlock</button></form>
+    </section>
+
+    <div class="admin-grid">
+        <section class="panel">
+            <h2>Staff</h2>
+            <form id="personForm" class="row"><input id="personName" class="grow" placeholder="New staff name"
+                    maxlength="80" required><button class="primary">Add</button></form>
+            <p class="muted" style="margin-top:8px">Card UID: present the card to a reader on this PC with the cursor in
+                the box, or type it. Last unknown card seen: <b id="lastCard">none</b> <button id="useLastCard"
+                    class="small hidden">copy</button></p>
+            <div id="peopleList"></div>
         </section>
-        <p id="notice" class="notice"></p>
-    </main>
+
+        <section class="panel">
+            <h2>Forgotten sign-outs</h2>
+            <p class="muted">Staff still signed in from a previous day. They stay on the fire register until you close
+                them here — nothing is closed automatically.</p>
+            <div id="staleList"></div>
+            <button id="closeStale" class="hidden" style="margin-top:10px">Close all forgotten sign-outs</button>
+
+            <h2 style="margin-top:24px">Visitors on site</h2>
+            <div id="visitorList"></div>
+
+            <h2 style="margin-top:24px">Settings</h2>
+            <form id="companyForm"><label>Company name<input id="companyName" maxlength="80"></label><button
+                    class="small">Save name</button></form>
+            <form id="noticeForm" style="margin-top:12px"><label>Fire notice shown to visitors<textarea id="fireNotice"
+                        rows="3" maxlength="400"></textarea></label><button class="small">Save notice</button></form>
+            <div class="row" style="margin-top:12px">
+                <button id="setCardToken" class="small ghost">Set card-reader token on this device</button>
+                <span class="muted" id="cardTokenState"></span>
+            </div>
+        </section>
+
+        <section class="panel" style="grid-column:1/-1">
+            <div class="row" style="justify-content:space-between">
+                <h2>Log</h2>
+                <div class="row">
+                    <input type="date" id="from" style="min-height:44px;padding:8px;width:auto">
+                    <input type="date" id="to" style="min-height:44px;padding:8px;width:auto">
+                    <button id="exportCsv" class="small">Download CSV</button>
+                    <button id="rollcallHistory" class="small ghost">Roll-call history</button>
+                </div>
+            </div>
+            <div id="events"></div>
+        </section>
+    </div>
+
+    <p id="notice" class="notice"></p>
+    <script src="/shared.js"></script>
     <script src="/admin.js"></script>
 </body>
 

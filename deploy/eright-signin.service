@@ -1,0 +1,26 @@
+# /etc/systemd/system/eright-signin.service
+# Main server. For the off-site mirror use eright-signin-mirror.service.
+[Unit]
+Description=eRIGHT sign-in v3 (main)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=signin
+WorkingDirectory=/opt/eright-signin
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=TZ_NAME=Europe/London
+# Fill these in /etc/eright-signin.env (chmod 600): ADMIN_PIN, API_TOKEN, MIRROR_URL, MIRROR_TOKEN
+EnvironmentFile=-/etc/eright-signin.env
+ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning server.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/eright-signin/data
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

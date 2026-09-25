@@ -1,0 +1,27 @@
+# /etc/systemd/system/eright-signin-mirror.service
+# Read-only mirror on a SECOND box (different building / cloud VM). Serves /fire from the last
+# roster the main server pushed, so the register survives the main site losing power.
+[Unit]
+Description=eRIGHT sign-in v3 (mirror)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=signin
+WorkingDirectory=/opt/eright-signin
+Environment=PORT=3000
+Environment=REPLICA=1
+Environment=TZ_NAME=Europe/London
+# /etc/eright-signin-mirror.env must contain MIRROR_TOKEN (same value as the main server)
+EnvironmentFile=/etc/eright-signin-mirror.env
+ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning server.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/eright-signin/data
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

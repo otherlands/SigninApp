@@ -3,30 +3,50 @@
 
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <meta name="theme-color" content="#102d2c">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0f1c1b">
     <title>Sign in</title>
     <link rel="icon" href="/favicon.svg">
+    <link rel="manifest" href="/manifest.webmanifest">
     <link rel="stylesheet" href="/style.css">
 </head>
 
 <body class="kiosk">
-    <main>
-        <header><span class="mark">✓</span>
-            <div>
-                <p id="clock"></p>
-                <h1 id="company">Your Company</h1>
-            </div>
-        </header>
-        <section class="panel">
-            <h2>Who are you?</h2>
-            <p class="hint">Tap your name to sign in or out.</p>
-            <div id="people" class="people" aria-live="polite"></div>
-            <p id="notice" class="notice"></p>
-        </section><a class="admin-link" href="/rollcall" style="color:#a11d1d">Roll call (who is on site)</a><a
-            class="admin-link" href="/admin">Admin</a>
-    </main>
-    <script src="/app.js"></script>
+    <header class="top">
+        <div class="brand">
+            <h1 id="company">…</h1>
+            <div class="clock" id="clock"></div>
+        </div>
+        <div class="count-pill" id="countPill"><span>On site</span><b id="inCount">–</b></div>
+    </header>
+
+    <div id="rollcallBanner" class="notice big hidden" style="background:var(--red);color:white">
+        FIRE ROLL CALL IN PROGRESS — go to the assembly point. Do not sign out.
+    </div>
+
+    <section class="panel">
+        <h2>Staff — tap your name to sign in or out</h2>
+        <div id="people" class="people" aria-live="polite"></div>
+    </section>
+
+    <section class="panel">
+        <div class="row" style="justify-content:space-between">
+            <h2>Visitors on site</h2>
+            <a href="/visitor"><button class="primary">Visitor sign in</button></a>
+        </div>
+        <div id="visitors"></div>
+    </section>
+
+    <p id="notice" class="notice" aria-live="assertive"></p>
+
+    <nav class="footer-links">
+        <a class="fire" href="/fire">FIRE ROLL CALL</a>
+        <a href="/admin">Admin</a>
+        <span id="cardHint" class="muted">Card reader: waiting…</span>
+    </nav>
+
+    <script src="/shared.js"></script>
+    <script src="/kiosk.js"></script>
 </body>
 
 </html>

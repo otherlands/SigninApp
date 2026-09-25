@@ -1,1 +1,69 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#102d2c"><title>Door tap</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css"></head><body class="tap"><main><section class="tap-card" aria-live="polite"><span class="tap-mark">✓</span><p id="company">Your Company</p><h1 id="heading">Checking you in…</h1><p id="message">Please wait.</p><div id="picker" hidden><h2>Who are you?</h2><p class="hint">Choose your name once. This phone will remember it for future door taps.</p><div id="people" class="people"></div></div><button id="change" class="text-button" hidden>Not you? Choose another name</button></section></main><script src="/tap.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0f1c1b">
+    <title>Door tap</title>
+    <link rel="icon" href="/favicon.svg">
+    <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+    <header class="top">
+        <div class="brand">
+            <h1 id="company">…</h1>
+        </div>
+    </header>
+    <section class="panel" style="text-align:center">
+        <h1 id="heading" style="font-size:2rem">Checking…</h1>
+        <p id="message" class="muted" style="font-size:1.2rem"></p>
+        <div id="picker" class="people hidden" style="margin-top:16px"></div>
+        <button id="change" class="ghost hidden" style="margin-top:16px">Not you? Choose a different name</button>
+    </section>
+    <script src="/shared.js"></script>
+    <script>
+        // Phone taps an NFC sticker whose URL is http://<server>/tap. First tap: choose your name (remembered on
+        // this phone). Every later tap signs you in or out. Same idea as V1, kept because it needs no hardware
+        // beyond a 30p sticker.
+        const { $, esc, api, fmtTime } = SI;
+        const KEY = 'door-tap-person-id';
+        let state;
+        function showPicker() {
+            $('#heading').textContent = 'Who are you?'; $('#message').textContent = 'Your choice is remembered on this phone.';
+            $('#picker').classList.remove('hidden'); $('#change').classList.add('hidden');
+            $('#picker').replaceChildren(...state.people.map(p => {
+                const b = document.createElement('button'); b.className = 'person'; b.innerHTML = `<strong>${esc(p.name)}</strong><span>Use this name</span>`;
+                b.onclick = () => { localStorage.setItem(KEY, p.id); tap(p.id); }; return b;
+            }));
+        }
+        async function tap(personId) {
+            $('#picker').classList.add('hidden'); $('#heading').textContent = 'Signing…';
+            try {
+                const data = await api('POST', '/api/sign', { personId, source: 'tap' });
+                $('#heading').textContent = data.event.kind === 'in' ? 'You are signed IN' : 'You are signed OUT';
+                $('#message').textContent = `${data.event.subjectName} · ${fmtTime(data.event.at)} · ${data.state.inCount} on site`;
+                $('#change').classList.remove('hidden');
+                if (navigator.vibrate) navigator.vibrate(80);
+            } catch (error) {
+                localStorage.removeItem(KEY);
+                $('#heading').textContent = 'Could not sign you in'; $('#message').textContent = error.message + ' — choose your name again.';
+                $('#change').classList.remove('hidden');
+            }
+        }
+        async function start() {
+            try {
+                state = await api('GET', '/api/state');
+                $('#company').textContent = state.companyName;
+                const id = localStorage.getItem(KEY);
+                if (!id || !state.people.some(p => p.id === id)) return showPicker();
+                tap(id);
+            } catch { $('#heading').textContent = 'Server unavailable'; $('#message').textContent = 'Connect to the company Wi-Fi and tap again.'; }
+        }
+        $('#change').onclick = () => { localStorage.removeItem(KEY); showPicker(); };
+        start();
+    </script>
+</body>
+
+</html>
