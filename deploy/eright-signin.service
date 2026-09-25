@@ -12,7 +12,8 @@ WorkingDirectory=/opt/eright-signin
 Environment=NODE_ENV=production
 Environment=PORT=3000
 Environment=TZ_NAME=Europe/London
-# Fill these in /etc/eright-signin.env (chmod 600): ADMIN_PIN, API_TOKEN, MIRROR_URL, MIRROR_TOKEN
+# Fill these in /etc/eright-signin.env (chmod 600): ADMIN_PIN, API_TOKEN, MIRROR_URL, MIRROR_TOKEN,
+# and for the SharePoint copy: SP_TENANT_ID, SP_CLIENT_ID, SP_CLIENT_SECRET, SP_SITE, SP_DRIVE, SP_FOLDER
 EnvironmentFile=-/etc/eright-signin.env
 ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning server.js
 Restart=always

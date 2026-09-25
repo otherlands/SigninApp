@@ -75,10 +75,25 @@ function showError(error) {
     notice(noticeEl, error.message, true);
 }
 
+async function loadHealth() {
+    const h = await api('GET', '/api/health');
+    const parts = [];
+    if (h.sharepoint) {
+        const last = h.sharepoint.last;
+        parts.push(`SharePoint → ${esc(h.sharepoint.site)} / ${esc(h.sharepoint.folder)}: ` + (!last ? 'no push yet'
+            : last.ok ? `<b style="color:var(--in)">ok</b> at ${esc(fmtWhen(last.at))} (${last.files.length} files)`
+                : `<b style="color:var(--amber)">FAILED</b> at ${esc(fmtWhen(last.at))} — ${esc(last.error)}`));
+    } else parts.push('SharePoint: not configured (SP_* environment variables)');
+    parts.push(h.mirror ? `Mirror → ${esc(h.mirror.url)}` : 'Mirror: not configured');
+    parts.push(`Queued snapshots waiting: ${h.outbox}`);
+    $('#offsiteState').innerHTML = parts.join('<br>');
+}
+
 async function load() {
     try {
         render(await api('GET', '/api/state'));
         await loadEvents();
+        await loadHealth();
         $('#pinPanel').classList.add('hidden');
     } catch (error) { showError(error); }
 }
