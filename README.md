@@ -78,11 +78,24 @@ units for main and mirror.
 | Option | Cost class | Firmware? | Notes |
 | --- | --- | --- | --- |
 | **Wall tablet** running `/` in kiosk/fullscreen mode | you probably have one | no | Any Android/iPad/old laptop. Add to home screen — the manifest gives a "Fire roll call" shortcut. |
-| **USB "keyboard-wedge" NFC/RFID reader** plugged into the tablet or a mini PC | tens of pounds | no | These readers type the card UID + Enter as if they were a keyboard. The kiosk detects the fast burst and posts `cardUid`. Set the token once via Admin → "Set card-reader token on this device". Assign cards in Admin by presenting the card with the cursor in the person's box. Unknown cards are logged and shown in Admin for one-click assignment. **Verified here with synthesised keydown events, not a physical reader.** |
-| **NFC stickers** for `/tap` | pence | no | Write the URL `http://<server>/tap` to an NTAG sticker on the door frame. Works with staff phones on the office Wi-Fi. |
+| **USB "keyboard-wedge" NFC/RFID reader** plugged into the tablet or a mini PC | tens of pounds | no | These readers type the card UID + Enter as if they were a keyboard. The kiosk detects the fast burst and posts `cardUid`. Set the token once via Admin → "Set card-reader token on this device". Assign cards in Admin by presenting the card with the cursor in the person's box. Unknown cards are logged and shown in Admin for one-click assignment. **Reader in use: YARONGTECH USB-203** (label: IC 13.56 MHz, USB, output format 8H10D-1). See "Card reader — what has been verified" below. |
+| **NFC stickers** for `/tap` | pence | no | Write the URL `http://<server>/tap` to an NTAG213 sticker on the door frame (painted frame or wood, not the steel strike plate). Works with staff phones on the office Wi-Fi: first tap asks for your name and remembers it on that phone; every later tap toggles you in/out. Give the server a fixed IP or hostname **before** writing any stickers. Write and lock stickers with an NFC phone and a tag-writing app; the USB-203 cannot write tags (wedge readers are output-only). A PC/SC reader-writer such as an ACR122U-class device is optional for desk writing — do not issue any "writable UID" fobs bundled with such kits to staff, because the UID is the person's identity here. |
 | **ESP32-S3 + PN532 door reader** (`firmware/door-reader/`) | ~£15 | yes | Posts card UIDs with a persistent `eventKey` counter; a held button starts a roll call; RGB LED shows result. **Not compiled in this workspace** — build with PlatformIO and bench-test first. |
 | **Starting the roll call without touching the fire panel** (we have no access to it) | £0 – ~£20 | no | Three ways, in order of preference: (1) the **START ROLL CALL** button on `/fire` from any phone — this is the primary path and is what was tested; (2) a **stand-alone wall button at the exit or assembly point** — a Shelly Plus i4 / Shelly BLU Button / any device that can call a URL, configured to `POST /api/fire/start` with body `{"source":"webhook","by":"exit button"}` and header `X-Api-Token`; (3) the **hold-button on the ESP32 door reader**. All three are idempotent: a second press while a roll call is open returns `alreadyOpen` and changes nothing. If panel access is ever granted later, the same endpoint accepts a relay-driven trigger — nothing else needs to change. |
 | **Second box for the mirror** | any spare Pi/VM | no | `REPLICA=1` + `MIRROR_TOKEN`. Put the mirror's `/fire` URL on the marshal's phone home screen as well. |
+
+### Card reader — what has been verified (2026-09-25)
+
+| Check | Result |
+| --- | --- |
+| How Windows sees the USB-203 | "HID Keyboard Device", USB `16C0:27DB`, two HID collections, standard Microsoft HID driver, no vendor software |
+| Output for one MIFARE Classic-type card, 4 presentations | `3175933060` every time, followed by Enter (Enter confirmed — it submitted a text box) |
+| Format | `3175933060` = `0xBD4CE484`, 32 bits → a 4-byte UID printed as 10 decimal digits, exactly what the label's 8H10D means |
+| Kiosk end-to-end with the physical reader | **Not yet done.** Only synthesised keydown events have been through the listener so far |
+| Inter-keystroke gap vs the listener's 120 ms rule | **Not yet measured** |
+| 7-byte-UID tags (NTAG213 stickers) on this reader | **Not yet tried.** Test that it types 10 stable digits and that two different stickers give different numbers before relying on it |
+
+The kiosk's built-in check: present an un-enrolled card at `/` and it should say "Card 3175933060 is not assigned to anyone"; Admin then shows it under "Last unknown card seen". That single scan proves reader → browser listener → server → token together.
 
 ## API (for Home Assistant, Node-RED, Shelly, ESP32)
 
@@ -108,9 +121,10 @@ card capture, duplicate `eventKey`, double-assignment refusal; visitor badges an
 call snapshot immunity, marks, end summary; stale flagging and admin close; admin PIN scope;
 main→mirror push and replica read-only behaviour; BST/GMT midnight; static serving and path
 traversal. Driven by hand in a browser: kiosk tap, roll call start/mark/end with red state,
-kiosk banner, admin card assignment, wedge listener.
+kiosk banner, admin card assignment, wedge listener (synthesised keys). Physical reader: identified
+and its output format confirmed (table above); kiosk end-to-end with it still owed.
 
-Not tested: a physical card reader, the ESP32 firmware (never compiled), a physical webhook button,
+Not tested: the physical card reader driving the kiosk page, the ESP32 firmware (never compiled), a physical webhook button,
 iOS Safari specifics, and running for weeks (watch `data/` size; it is tiny per event).
 There is no fire-panel integration: the roll call is started by a person (or a button a person
 presses), never by the alarm itself.
