@@ -12,6 +12,20 @@ on every event. Deliberately **not** taken from Home Presence: camera motion, BL
 and the inferred "auto-away" sign-out — a fire register must only change when a human acts.
 The original one-file JSON version is preserved in git history (`git show 6eab63a:server.js`).
 
+## Where things stand (2026-09-26)
+
+| Piece | State | Evidence |
+| --- | --- | --- |
+| **Server** v3.3 | **LIVE** on Proxmox CT 106 `signin` (Ubuntu 24.04 LXC), `http://192.168.101.102:3000` | `/api/health` 3.3.0, `signin_up 1`, kiosk renders; installed 2026-09-25 22:36Z |
+| Staff names, company, fire notice | **not yet entered** | Admin → PIN (from the install log) |
+| **Teams webhook** | built + tested against a fake; **URL not yet set** | `TEAMS_WEBHOOK_URL` in `/etc/eright-signin.env`, then START/END drill |
+| **SharePoint copy** | built + tested against a fake; **tenant not yet configured** | `SP_*` lines |
+| **Prometheus / e-mail alerts** (llm-cluster) | rules + scrape job in repo; **deploy on platform-a owed** (`SIGNIN_ADDR=192.168.101.102 bash scripts/deploy-signin-monitoring.sh`) | platform-a reaches the server (`signin_up 1` read from it) |
+| **Back-door reader** (ESP32-S3 + PN532) | firmware flashed as `back-door-reader`; Wi-Fi + health 200 + **fire button proven live** (roll call 22:58Z); **PN532 arrives 2026-09-26** | `firmware/door-reader/WIRING.md` |
+| **Front-door kiosk** (Pi 5 + Argon HMI 10CS, PoE) | **parts ordered 2026-09-26, £234.30**; installer written, unverified on hardware | "Door kiosk — Raspberry Pi build" |
+| USB-203 card reader | output format verified; kiosk end-to-end owed (with the Pi) | "Card reader — what has been verified" |
+| DHCP reservation for `.101.102` | owed (UniFi) | keeps `/etc/hosts` on platform-a true |
+
 ## Repository and history
 
 | Commit | Date | What |
@@ -30,8 +44,10 @@ The original one-file JSON version is preserved in git history (`git show 6eab63
 | `6acdf1e` `cea6d33` | 2026-09-25 | installer pipefail fix; **first live install** on Proxmox CT 106 `signin` (192.168.101.102) |
 | `f3120c8` `636cd94` | 2026-09-25 | **Door-reader firmware built and flashed for the first time** (ESP32-S3): bench-tolerant PN532, health check, steady LEDs, dual log; `WIRING.md` build guide; fire button proven live |
 | `ccf7a13` | 2026-09-26 | README: ESP32 flash / test / LED section |
-| (next) | 2026-09-26 | **Door kiosk = Raspberry Pi** (no battery, PoE, cage + Chromium): `deploy/kiosk-pi/install.sh`, parts list and build steps; kiosk page accepts a one-time `?cardToken=` hand-in |
-| (next) | 2026-09-26 | **Decision: ESP32 + PN532 = back-door reader + fire button** (`back-door-reader`, reflashed); front door = Pi kiosk + USB-203. Two independent tap points, no new code |
+| `aa5682e` | 2026-09-26 | **Door kiosk = Raspberry Pi** (no battery, PoE, cage + Chromium): `deploy/kiosk-pi/install.sh`, parts list and build steps; kiosk page accepts a one-time `?cardToken=` hand-in |
+| `a1343b8` | 2026-09-26 | **Decision: ESP32 + PN532 = back-door reader + fire button** (`back-door-reader`, reflashed); front door = Pi kiosk + USB-203. Two independent tap points, no new code |
+| `0f6c99e` | 2026-09-26 | **Kiosk parts ordered** (The Pi Hut, £234.30): Pi 5 2 GB, Argon Industria HMI 10CS 10" display + enclosure, Argon PoE+ HAT, THRML cooler, SD. Build steps match the kit; installer copes with Desktop images |
+| (next) | 2026-09-26 | README: history + current-state summary |
 
 Home: `https://github.com/tobygladman2/SigninApp` (also mirrored at `otherlands/SigninApp`; the
 development clone's `origin` has both as push URLs so one push updates both).
