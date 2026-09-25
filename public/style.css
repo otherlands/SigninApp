@@ -322,6 +322,11 @@ body.fire.active .fire-banner {
     animation: pulse 1.6s ease-in-out infinite;
 }
 
+body.fire.active.allsafe .fire-banner {
+    background: var(--in);
+    animation: none;
+}
+
 @keyframes pulse {
 
     0%,

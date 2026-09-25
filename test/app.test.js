@@ -258,3 +258,59 @@ test('static pages and path traversal', async () => {
         assert.notEqual(r.status, 200);
     } finally { await close(); }
 });
+
+test('/metrics exposes counts only: lone worker, roll call, all-safe, off-site copy state', async () => {
+    const { app, call, close } = await boot({ adminPin: 'pin' });
+    const H = { 'X-Admin-Pin': 'pin' };
+    try {
+        let r = await call('GET', '/metrics');
+        assert.equal(r.status, 200, 'no PIN or token needed — Prometheus scrapes it');
+        assert.match(r.headers.get('content-type'), /text\/plain/);
+        assert.match(r.text, /^signin_up 1$/m);
+        assert.match(r.text, /^signin_on_site_total 0$/m);
+        assert.match(r.text, /^signin_lone_worker 0$/m);
+        assert.match(r.text, /^signin_rollcall_open 0$/m);
+        assert.match(r.text, /^signin_local_hour (\d|1\d|2[0-3])$/m);
+        assert.match(r.text, /^signin_sharepoint_configured 0$/m);
+        assert.doesNotMatch(r.text, /signin_sharepoint_last_push/, 'no push yet = no series, not a fake 0');
+        assert.match(r.text, /^signin_info\{version="3\.2\.0",tz="Europe\/London"\} 1$/m);
+
+        r = await call('POST', '/api/people', { name: 'Alone Person' }, H);
+        const p = r.json.people[0];
+        await call('POST', '/api/sign', { personId: p.id });
+        r = await call('GET', '/metrics');
+        assert.match(r.text, /^signin_staff_on_site 1$/m);
+        assert.match(r.text, /^signin_lone_worker 1$/m, 'one staff, no visitors');
+        assert.doesNotMatch(r.text, /Alone Person/, 'names never leave /metrics');
+        r = await call('GET', '/api/roster');
+        assert.equal(r.json.loneWorker, true);
+        assert.match(app.rosterText(), /LONE WORKER/);
+
+        r = await call('POST', '/api/visitors', { name: 'Vis' });
+        const v = r.json.visitor;
+        r = await call('GET', '/metrics');
+        assert.match(r.text, /^signin_lone_worker 0$/m, 'a visitor on site is not lone working');
+
+        r = await call('POST', '/api/fire/start', { source: 'fire-page', by: 'Tester' });
+        assert.equal(r.status, 201);
+        assert.equal(r.json.rollcall.allSafe, false);
+        r = await call('GET', '/metrics');
+        assert.match(r.text, /^signin_rollcall_open 1$/m);
+        assert.match(r.text, /^signin_rollcall_total 2$/m);
+        assert.match(r.text, /^signin_rollcall_unaccounted 2$/m);
+        assert.match(r.text, /^signin_rollcall_started_timestamp_seconds \d{10}$/m);
+
+        await call('POST', '/api/fire/mark', { subjectType: 'staff', subjectId: p.id, status: 'safe' });
+        r = await call('POST', '/api/fire/mark', { subjectType: 'visitor', subjectId: v.id, status: 'safe' });
+        assert.equal(r.json.rollcall.allSafe, true, 'every person on the frozen register marked SAFE');
+        r = await call('GET', '/metrics');
+        assert.match(r.text, /^signin_rollcall_safe 2$/m);
+        assert.match(r.text, /^signin_rollcall_unaccounted 0$/m);
+
+        await call('POST', '/api/fire/end', {});
+        r = await call('GET', '/metrics');
+        assert.match(r.text, /^signin_rollcall_open 0$/m);
+        assert.doesNotMatch(r.text, /signin_rollcall_total/, 'roll-call detail series disappear when none is open');
+        assert.match(r.text, /^signin_events_last_24h \d+$/m);
+    } finally { await close(); }
+});

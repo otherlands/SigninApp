@@ -1,4 +1,4 @@
-# eRIGHT Sign-In v3.1 — staff & visitor register with fire roll call
+# eRIGHT Sign-In v3.2 — staff & visitor register with fire roll call
 
 Small LAN system for a single door: 8 staff, visitors, and — because eRIGHT has **no designated
 fire marshal** — a register that anyone at the assembly point can open on a phone and that is
@@ -22,6 +22,8 @@ The original one-file JSON version is preserved in git history (`git show 6eab63
 | `b0c1c6f` | 2026-09-25 | README: history table and first-run checklist |
 | `bf3ec40` | 2026-09-25 | README: card reader identified and verified facts recorded |
 | `bfb38e9` | 2026-09-25 | v3.1: SharePoint off-site copy via Microsoft Graph, per-sink outbox |
+| `0836ed2` | 2026-09-25 | README: v3.1 no-marshal framing, data-flow diagram, health fields |
+| (next) | 2026-09-25 | v3.2: Prometheus `/metrics` (counts only), lone-worker flag, ALL SAFE state — so the estate's Prometheus/Alertmanager on platform-a watches the register (see "Estate integration") |
 
 Home: `https://github.com/tobygladman2/SigninApp` (also mirrored at `otherlands/SigninApp`; the
 development clone's `origin` has both as push URLs so one push updates both).
@@ -30,7 +32,7 @@ Developed for eRIGHT Ltd, 8 staff, one door.
 ## First run checklist
 
 1. Install Node 22.13 or newer (`node --version`). Developed and tested on 24.13.1.
-2. `npm test` — expect `pass 14`.
+2. `npm test` — expect `pass 15`.
 3. Set `ADMIN_PIN` and `API_TOKEN` before exposing the server to the office LAN (see `deploy/`). Give the server a fixed IP or hostname.
 4. `npm start`, open `/admin`, set the company name and fire notice, add the staff.
 5. Put `/` on the door tablet in fullscreen. Put `/fire` on **every** staff phone's home screen (there is no single marshal) and print a QR code to it for the assembly-point sign.
@@ -44,14 +46,14 @@ Developed for eRIGHT Ltd, 8 staff, one door.
 | --- | --- | --- |
 | `/` | Wall tablet by the door | One big button per staff member. Tap = toggle in/out. Shows visitors on site, on-site count, and a red banner while a roll call is running. Listens for a USB card reader. |
 | `/visitor` | Visitor at the tablet | Name, company, who they're visiting, vehicle reg, fire-notice tick box. Issues a daily badge number. |
-| `/fire` | Anyone's phone, any LAN device | Live "who is on site". **START ROLL CALL** freezes the register at that instant; then SAFE / MISSING per person with the ticker's name and time; counts of safe / missing / not yet seen; END writes a summary event. If the server dies mid-fire the page shows the last register **that device** saw, clearly labelled — a fallback only, not relied on (see SharePoint). Print-friendly. |
+| `/fire` | Anyone's phone, any LAN device | Live "who is on site". **START ROLL CALL** freezes the register at that instant; then SAFE / MISSING per person with the ticker's name and time; counts of safe / missing / not yet seen; the banner turns **green "ALL n ACCOUNTED FOR"** the moment every person on the frozen register is marked SAFE; END writes a summary event. The live view says **LONE WORKER** when exactly one member of staff is on site with no visitors. If the server dies mid-fire the page shows the last register **that device** saw, clearly labelled — a fallback only, not relied on (see SharePoint). Print-friendly. |
 | `/admin` | Manager's PC | Add/remove staff, assign card UIDs, close forgotten sign-outs, sign visitors out, company name, fire notice, event log, CSV export, roll-call history. Optional PIN. |
 | `/tap` | Staff phone via NFC sticker | The original SigninApp's zero-hardware path: sticker URL → phone remembers who you are → each tap toggles you. |
 
 ## Run
 
 ```powershell
-npm test          # 14 tests, in-memory SQLite + fake Graph, ~0.3 s
+npm test          # 15 tests, in-memory SQLite + fake Graph, ~0.3 s
 npm start         # http://<ip>:3000
 ```
 
@@ -200,8 +202,9 @@ flowchart LR
 | Method | Path | Body / notes |
 | --- | --- | --- |
 | GET | `/api/health` | `{ok, version, replica, outbox, mirror, sharepoint:{configured, site, folder, last:{at, ok, files|error}}}` |
+| GET | `/metrics` | Prometheus text exposition, **counts only — no names** (see "Estate integration"). No PIN or token: it is meant to be scraped. |
 | GET | `/api/state` | full kiosk state |
-| GET | `/api/roster` | who is on site now (staff + visitors) |
+| GET | `/api/roster` | who is on site now (staff + visitors) + `loneWorker` (exactly one staff, no visitors) |
 | POST | `/api/sign` | `{personId}` or `{cardUid}`; optional `direction:"in"|"out"`, `eventKey`, `source`, `device`, `note` |
 | POST | `/api/visitors` | `{name, company?, hostId?, vehicle?}` → 201 with badge |
 | POST | `/api/visitors/:id/out` | |
@@ -211,6 +214,37 @@ flowchart LR
 | POST | `/api/fire/end` | `{by?}` |
 | POST | `/api/mirror` | replica intake, `{type:"roster", roster}` |
 | admin | `/api/people` (GET/POST), `/api/people/:id` (PATCH name/cardUid/active, DELETE), `PUT /api/company`, `PUT /api/fire-notice`, `POST /api/stale/close`, `GET /api/events`, `GET /api/export?from&to`, `GET /api/fire/history`, `GET /api/visitors/history`, `POST /api/mirror/flush` | |
+
+## Estate integration — the register on eRIGHT's monitoring rails (v3.2)
+
+The building's other systems (servers, switch, air-con, power plugs) are watched by Prometheus +
+Alertmanager on platform-a (`llm-cluster` repo, `ops-config/observability/`), which e-mails the team
+through the Graph mail relay. v3.2 puts the sign-in register on the same rails, so three things that
+used to depend on somebody happening to look are now **pushed**:
+
+| What | Why it matters for safety | How |
+| --- | --- | --- |
+| **A roll call has started** | Everyone with e-mail on their phone hears about it within about a minute, including staff off site who can then stay away and phone in. | `signin_rollcall_open == 1` → alert `SigninRollCallOpen` (critical). Resolves when the roll call ends. |
+| **Lone working out of hours** | One person alone in the building in the evening is a recognised risk; today nothing notices. | `signin_lone_worker == 1` and `signin_local_hour` outside 07–18 for 30 min → `SigninLoneWorkerOutOfHours` (warning). Hours are a stated starting point, tune in the rule. |
+| **The register itself is dark or its off-site copy is stale** | A fire register nobody can read at the assembly point is worse than none — you would trust it. | `up{job="signin"} == 0` → `SigninServerDown`; `signin_sharepoint_last_push_ok == 0` for 15 min → `SigninOffsiteCopyFailing`; `signin_stale_signins > 0` for 6 h → `SigninForgottenSignouts` (hygiene). |
+
+**What `/metrics` exposes** (gauges; names of people are deliberately absent):
+`signin_up`, `signin_replica`, `signin_staff_on_site`, `signin_visitors_on_site`, `signin_on_site_total`,
+`signin_stale_signins`, `signin_lone_worker`, `signin_local_hour`, `signin_rollcall_open` and — only while one is
+open — `signin_rollcall_{started_timestamp_seconds,total,safe,missing,unaccounted}`, `signin_outbox_depth`,
+`signin_sharepoint_configured`, `signin_sharepoint_last_push_{ok,age_seconds}` (only after a first push),
+`signin_events_last_24h`, `signin_started_timestamp_seconds`, `signin_info{version,tz}`.
+
+**Wiring (in the llm-cluster repo, deployed by Alan on platform-a):** scrape job `signin` in
+`ops-config/observability/prometheus.yml`, rule group `signin_safety` in `alert-rules.yml`, a hub tile,
+and `scripts/deploy-signin-monitoring.sh`. The scrape needs a fixed address for this server (the Proxmox
+VM "Sign-in testing" on the `hpe` node is the intended home; its IP was not on record when this was
+written). Prometheus scrapes every 30 s, so "within about a minute" is the honest latency for the roll-call
+alert; a direct webhook from `fireStart()` to Teams would be faster and is the obvious next step.
+
+**Verified:** all series and the lone-worker / all-safe behaviour are pinned by `test/app.test.js`
+(`/metrics exposes counts only …`). **Not yet verified:** a real scrape from platform-a and a real alert
+e-mail — that is the first deploy's evidence.
 
 ## What is tested vs. what is not
 

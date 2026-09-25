@@ -26,8 +26,11 @@ function render(data) {
     $('#title').textContent = active ? 'FIRE ROLL CALL' : `${data.companyName} — who is on site`;
     $('#bigCount').textContent = active ? rc.total : list.count;
     $('#subtitle').textContent = active
-        ? `Started ${fmtWhen(rc.startedAt)}${rc.startedBy ? ' by ' + rc.startedBy : ''} (${rc.source}). Register frozen at that moment.`
-        : (list.replica ? `Mirror copy — last update from main server ${fmtWhen(list.at)}` : `Live register at ${fmtTime(list.at)}`);
+        ? (rc.allSafe
+            ? `ALL ${rc.total} ACCOUNTED FOR — everyone on the register is marked SAFE. Started ${fmtWhen(rc.startedAt)}${rc.startedBy ? ' by ' + rc.startedBy : ''}.`
+            : `Started ${fmtWhen(rc.startedAt)}${rc.startedBy ? ' by ' + rc.startedBy : ''} (${rc.source}). Register frozen at that moment.`)
+        : (list.replica ? `Mirror copy — last update from main server ${fmtWhen(list.at)}` : `Live register at ${fmtTime(list.at)}${list.loneWorker ? ' — LONE WORKER: one member of staff on site' : ''}`);
+    document.body.classList.toggle('allsafe', active && Boolean(rc.allSafe));
     $('#startBtn').classList.toggle('hidden', active);
     $('#endBtn').classList.toggle('hidden', !active);
     $('#stats').classList.toggle('hidden', !active);
