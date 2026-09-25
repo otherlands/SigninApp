@@ -24,13 +24,17 @@ The original one-file JSON version is preserved in git history (`git show 6eab63
 | `bfb38e9` | 2026-09-25 | v3.1: SharePoint off-site copy via Microsoft Graph, per-sink outbox |
 | `0836ed2` | 2026-09-25 | README: v3.1 no-marshal framing, data-flow diagram, health fields |
 | `4712791` | 2026-09-25 | v3.2: Prometheus `/metrics` (counts only), lone-worker flag, ALL SAFE state — so the estate's Prometheus/Alertmanager on platform-a watches the register (see "Estate integration") |
-| (next) | 2026-09-25 | v3.3: **Teams webhook** (roll-call start / all-safe / end cards in seconds), **visitor pre-registration** (one-tap arrival), kiosk **lone-worker banner**, new estate-wide design, `deploy/install-ubuntu-vm.sh` |
+| `05a94db` | 2026-09-25 | v3.3: **Teams webhook** (roll-call start / all-safe / end cards in seconds), **visitor pre-registration** (one-tap arrival), kiosk **lone-worker banner**, new estate-wide design, `deploy/install-ubuntu-vm.sh` |
+| `b764fd7` | 2026-09-25 | tests pin every env-derived setting (an exported `ADMIN_PIN` in the shell had turned a run red) |
+| (next) | 2026-09-25 | README: step-by-step Ubuntu install for the Proxmox VM |
 
 Home: `https://github.com/tobygladman2/SigninApp` (also mirrored at `otherlands/SigninApp`; the
 development clone's `origin` has both as push URLs so one push updates both).
 Developed for eRIGHT Ltd, 8 staff, one door.
 
 ## First run checklist
+
+On a Proxmox/Ubuntu VM, follow **"Install on Ubuntu, step by step"** below — it covers all of this in order. The short form:
 
 1. Install Node 22.13 or newer (`node --version`). Developed and tested on 24.13.1.
 2. `npm test` — expect `pass 17`.
@@ -39,8 +43,8 @@ Developed for eRIGHT Ltd, 8 staff, one door.
 5. Put `/` on the door tablet in fullscreen. Put `/fire` on **every** staff phone's home screen (there is no single marshal) and print a QR code to it for the assembly-point sign.
 6. Set the `SP_*` variables so the register is copied to SharePoint after every change (see "SharePoint off-site copy"); confirm the first push in Admin → Off-site copies.
 7. Set `TEAMS_WEBHOOK_URL` (see "Teams channel") so a roll call starting reaches every staff phone in seconds; press START then END on `/fire` and watch both cards land.
-7. Delete any `data/` folder copied from a development machine before first real use; it holds test rows.
-8. Back up `data/signin.sqlite` (and its `-wal` file) — it is the whole register. A small UPS on the server and router lets the last sign-outs reach SharePoint after the mains go.
+8. Delete any `data/` folder copied from a development machine before first real use; it holds test rows.
+9. Back up `data/signin.sqlite` (and its `-wal` file) — it is the whole register. A small UPS on the server and router lets the last sign-outs reach SharePoint after the mains go.
 
 ## Pages
 
@@ -128,6 +132,95 @@ Honest limits: every one of these boxes is inside the building. The out-of-build
 `deploy/eright-signin-mirror.service` with `MIRROR_TOKEN` in `/etc/eright-signin-mirror.env`, port 3000 free
 or change it, and set `MIRROR_URL`/`MIRROR_TOKEN` on the VM. platform-a then serves `/fire` from the last
 roster even if the VM is dark.
+
+## Install on Ubuntu, step by step (the Proxmox VM)
+
+Everything below is typed on the VM's console or over SSH. Nothing needs the internet after step 3 except
+the Teams and SharePoint pushes themselves. Allow ten minutes.
+
+**1. Create the VM in Proxmox** (node `hpe`). Ubuntu Server 24.04 LTS or newer ISO; 1 vCPU, 1 GB RAM, 8 GB disk
+is plenty (Node + SQLite; the register is a few MB a year). Network: the bridge that carries the **Corporate
+VLAN** (the one the door tablet and staff phones are on — the servers' VLAN 102 is the wrong one for this).
+Options → **Start at boot = Yes**. In the installer: hostname `signin`, create your admin user, tick
+**Install OpenSSH server**, no snaps.
+
+**2. First login: updates and the basics**
+
+```bash
+sudo apt-get update && sudo apt-get -y upgrade
+sudo apt-get install -y git curl ca-certificates
+sudo timedatectl set-timezone Europe/London
+hostname -I          # note the address — you will give it a DHCP reservation in UniFi in step 8
+```
+
+**3. Node 22 LTS.** Ubuntu's own `nodejs` package is usually too old for `node:sqlite` (needs ≥ 22.13).
+Use the NodeSource repository:
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+node --version       # expect v22.13 or newer (v24 is fine too — developed on 24.13.1)
+```
+
+**4. Get the code and run the installer.** One command does the rest: creates the `signin` system user,
+clones to `/opt/eright-signin`, runs the 17 tests, writes `/etc/eright-signin.env` with a **generated admin
+PIN and API token (printed once — write them down)**, installs and starts the service, and proves
+`/metrics` answers.
+
+```bash
+git clone https://github.com/otherlands/SigninApp.git ~/SigninApp
+cd ~/SigninApp
+sudo REPO_URL=https://github.com/otherlands/SigninApp.git bash deploy/install-ubuntu-vm.sh
+```
+
+The last lines print the three page addresses and the `SIGNIN_ADDR=…` line for platform-a.
+If it says `node … too old`, redo step 3. If `tests: # fail` is not 0, stop and say so — do not go live.
+
+**5. Check it from another device on the office Wi-Fi.** Open `http://<vm-ip>:3000/` — the dark kiosk page
+with "eRIGHT Ltd" and the clock. `http://<vm-ip>:3000/admin` → enter the PIN from step 4 → add the staff
+names, set the company name and fire notice. Delete nothing from `data/` — it is fresh on a new VM.
+
+**6. Teams channel (2 minutes).** In Teams open the channel you want the alarm in → ⋯ → **Workflows** →
+"Post to a channel when a webhook request is received" → name it *eRIGHT Sign-In* → pick team + channel →
+copy the URL. Then on the VM:
+
+```bash
+sudo nano /etc/eright-signin.env      # paste into TEAMS_WEBHOOK_URL= ; check PUBLIC_URL= is http://<vm-ip>:3000
+sudo systemctl restart eright-signin
+```
+
+Press **START ROLL CALL** on `http://<vm-ip>:3000/fire` from a phone → the red card should be in the channel
+within seconds → tick everyone SAFE → green card → **END** → summary card. That is the evidence.
+
+**7. SharePoint copy** — follow "SharePoint off-site copy" below (needs an Entra app registration; fill the
+`SP_*` lines in the same env file, restart, check Admin → Off-site copies).
+
+**8. Wire it to the estate's monitoring (platform-a).** In UniFi give the VM a **DHCP reservation** for the
+address from step 2 so it never moves. Then from your PC:
+
+```bash
+ssh -t aiadmin@192.168.102.100 "cd ~/llm-cluster && git pull --ff-only && SIGNIN_ADDR=<vm-ip> bash scripts/deploy-signin-monitoring.sh 2>&1 | tee ~/deploy-signin-monitoring.log"
+```
+
+It preflights `/metrics`, adds the `signin` hosts line and scrape job, installs the `signin_safety` alert
+rules and lights the hub tile. Repeat the START/END drill: this time the **Alerts@ e-mail** must arrive too.
+
+**9. Tablet and phones.** Put `/` on the door tablet in fullscreen (add to home screen); put `/fire` on
+every staff phone's home screen; print a QR code to `/fire` for the assembly-point sign. Plug the USB-203
+card reader into the tablet and set the API token once via Admin → "Set card-reader token on this device".
+
+**10. Updates later.** `sudo bash /opt/eright-signin/deploy/install-ubuntu-vm.sh` — it pulls the latest code as
+the `signin` user, keeps the env file, re-runs the tests and restarts (idempotent). Take a Proxmox snapshot first.
+
+**Day-to-day commands**
+
+```bash
+systemctl status eright-signin              # running?
+journalctl -u eright-signin -n 50 --no-pager  # last log lines (every line is UTC-stamped)
+curl -s localhost:3000/api/health           # JSON: teams / sharepoint last push state, outbox depth
+curl -s localhost:3000/metrics | grep -E '^signin_(up|on_site_total|rollcall_open|lone_worker)'
+sudo cp /opt/eright-signin/data/signin.sqlite /root/signin-$(date +%F).sqlite   # manual backup of the register
+```
 
 ## SharePoint off-site copy (the "building is on fire" view)
 

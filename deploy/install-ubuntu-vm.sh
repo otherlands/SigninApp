@@ -25,7 +25,8 @@ echo "  node $NV ok"
 echo "== 2 user + checkout =="
 id signin >/dev/null 2>&1 || useradd --system --home-dir "$DEST" --shell /usr/sbin/nologin signin
 if [ -d "$DEST/.git" ]; then
-  git -C "$DEST" pull --ff-only -q && echo "  updated $(git -C "$DEST" rev-parse --short HEAD)"
+  # run git as the owner: root pulling a signin-owned checkout trips git's "dubious ownership" refusal
+  sudo -u signin git -C "$DEST" pull --ff-only -q && echo "  updated $(git -C "$DEST" rev-parse --short HEAD)"
 elif [ -n "$REPO_URL" ]; then
   git clone -q "$REPO_URL" "$DEST" && echo "  cloned $(git -C "$DEST" rev-parse --short HEAD)"
 else
@@ -35,6 +36,7 @@ else
 fi
 install -d -o signin -g signin -m 0750 "$DEST/data"
 chown -R signin:signin "$DEST"
+git config --global --add safe.directory "$DEST" 2>/dev/null || true
 (cd "$DEST" && sudo -u signin node --disable-warning=ExperimentalWarning --test 'test/**/*.test.js' 2>&1 | grep -E '^# (pass|fail)' | sed 's/^/  tests: /')
 
 echo "== 3 env file =="
