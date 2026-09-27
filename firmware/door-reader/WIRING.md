@@ -18,6 +18,9 @@ Proxmox box, `http://192.168.101.102:3000`) over the office **IOT** Wi-Fi.
 
 ## What you need
 
+![The kit as it arrives: blue fob, white card, PN532 (red board), three loose header strips, ESP32-S3 on its USB lead, jumper wires](photos/01-kit-as-delivered.jpg)
+*The kit as delivered (27 Sep 2026). Note the header pins are loose — they need soldering (step 0).*
+
 | # | Part | Notes |
 | --- | --- | --- |
 | 1 | **ESP32-S3 dev board** (the one flashed 2026-09-25, MAC `14:c1:9f:d1:32:e4`) | Already has the firmware and Wi-Fi/server settings on it. Any ESP32-S3 DevKitC-style board works if reflashed. |
@@ -42,12 +45,18 @@ Do this with the power **off** (USB unplugged).
 
 ## Step 1 — set the PN532 to I2C
 
+![PN532 front: DIP switch block top-right with the printed table HSU 0 0 / I2C 1 0 / SPI 0 1; the 4-pin header SCL SDA VCC GND on the right edge; the 8-pin SPI row along the bottom](photos/02-pn532-front-dip-and-i2c-header.jpg)
+*Front of the PN532. The yellow DIP block and its table are top-right; the four holes down the right edge (SCL, SDA, VCC, GND) are the ones we solder and use. The row along the bottom (SCK … IRQ) is SPI — leave it empty.*
+
 1. Find the two DIP switches on the PN532 board (yellow block next to the 4-pin header).
 2. Set them to the I2C position per the table printed on the board. **On our Elechouse V3 (HW-147) the printed table
    reads HSU = 0 0 · I2C = 1 0 · SPI = 0 1 — so switch 1 ON, switch 2 OFF** (confirmed from the module 2026-09-27).
 3. Take a photo of the switches for the record.
 
 ## Step 2 — wire the PN532 to the ESP32 (4 wires)
+
+![PN532 back: ELECHOUSE marking, GND VCC TXD RXD pads at the top, breakout pads down the right](photos/03-pn532-back.jpg)
+*Back of the board — for identification only (Elechouse V3). Nothing is wired on this side; the GND/VCC/TXD/RXD pads at the top are the serial (HSU) option, which we do not use.*
 
 Power **still off**. Use the **4-pin header on the right-hand edge** labelled **SCL, SDA, VCC, GND** (top to
 bottom). The 8-pin row along the bottom (SCK / MISO / MOSI / SS / VCC / GND / IRQ / RSTO) is for SPI — leave it
