@@ -116,6 +116,27 @@ void checkServer()
 }
 
 // PN532 is optional at bench time: probe quietly, retry every 30 s, never poll an absent chip (it floods the log).
+// On a miss, scan the bus: a PN532 in I2C mode answers at 0x24; anything else found tells us the wiring is fine
+// and the DIP switches are not; nothing found means SDA/SCL/GND are not reaching the chip.
+void scanI2c()
+{
+    int found = 0;
+    String seen;
+    for (uint8_t a = 1; a < 127; a++)
+    {
+        Wire.beginTransmission(a);
+        if (Wire.endTransmission() == 0)
+        {
+            found++;
+            seen += " 0x" + String(a, HEX);
+        }
+    }
+    if (found)
+        LOG("[i2c] %d device(s) on SDA %d / SCL %d:%s  (PN532 in I2C mode = 0x24)\n", found, PIN_I2C_SDA, PIN_I2C_SCL, seen.c_str());
+    else
+        LOG("[i2c] bus empty on SDA %d / SCL %d - no device acknowledges any address (check SDA/SCL wires and GND)\n", PIN_I2C_SDA, PIN_I2C_SCL);
+}
+
 void probeNfc()
 {
     lastNfcProbe = millis();
@@ -123,6 +144,7 @@ void probeNfc()
     uint32_t version = nfc.getFirmwareVersion();
     if (!version)
     {
+        scanI2c();
         if (!nfcReady)
             LOG("[nfc] PN532 not found on I2C (SDA %d SCL %d) - button still works; retrying every 30 s\n", PIN_I2C_SDA, PIN_I2C_SCL);
         nfcReady = false;

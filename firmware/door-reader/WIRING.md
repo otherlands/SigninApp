@@ -116,7 +116,9 @@ network. Moving it out of Wi-Fi range or the IOT network being down looks exactl
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| Orange at boot, never blue | PN532 not seen | DIP switches not on I2C; SDA/SCL swapped; loose jumper; VCC on the wrong pin. Power off, re-check, power on. The board also retries every 30 s on its own. |
+| Orange at boot, never blue | PN532 not seen | DIP switches not on I2C; SDA/SCL swapped or on the wrong pins; loose header/jumper; VCC on the wrong pin. Power off, re-check, power on. The board also retries every 30 s on its own. **The PN532's own LED being lit only proves VCC and GND — not the data wires.** |
+| Orange, and the log says `[i2c] bus empty` | Nothing at all answers on the bus | Either the DIP switches are still on HSU (factory) → set 1 ON, 2 OFF and power-cycle; or SDA/SCL are not on GPIO 8/9 (read the tiny pin numbers next to the wires; swapped = empty too); or the header is not soldered so SDA/SCL float. Seen live 2026-09-27 on the bench. |
+| Orange, and the log says `[i2c] 1 device(s) … 0x24` but still not found | Bus fine, chip odd | Power-cycle; if it persists the module may be faulty — try the other PN532 pins/board. |
 | Purple forever | No Wi-Fi | Is the IOT network up? Is the reader within range? |
 | Orange flash on every card, even assigned ones | Server unreachable or wrong token | Is `http://192.168.101.102:3000/` opening on a phone? If yes, the token on the board does not match the server — Alan reflashes (below). |
 | Green but the wrong person signs in | Card assigned to the wrong name | Admin → that person's card box → type `CLEAR` + Enter, then re-assign. |
@@ -144,7 +146,9 @@ python tools\listen_door_reader.py COM42 40      # watch for [wifi] / [server] .
 ```
 
 The board logs to both its native USB port and the UART lead. A healthy boot prints
-`[server] http://192.168.101.102:3000/api/health -> 200` then a `[status]` line every 30 s.
+`[server] http://192.168.101.102:3000/api/health -> 200` then a `[status]` line every 30 s. When the PN532 is not
+found the firmware also scans the I2C bus and prints `[i2c] …` — `bus empty` = wiring/DIP problem; `0x24` seen = the
+PN532 is wired and in I2C mode.
 
 ---
 *Pins are those in `include/config.h` (SDA 8, SCL 9, button 4). Built and bench-tested 2026-09-25:
