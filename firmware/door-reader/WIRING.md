@@ -1,7 +1,10 @@
 # eRIGHT back-door reader — build & wiring guide
 
-Anyone in the office can build this in about 20 minutes with a screwdriver and no soldering, if the
-PN532 comes with its header pins fitted (most do). Read the whole page once before touching anything.
+Anyone in the office can build this in about 20 minutes with a screwdriver. **One soldering job**: the PN532 we
+bought (Elechouse V3, marked HW-147, arrived 2026-09-27) ships with its header pins loose in the bag — the 4-pin
+header must be soldered into the GND / VCC / SDA / SCL holes on the right-hand edge before anything else. Ten
+minutes for anyone who has soldered before; taped or pushed-in pins are not reliable enough for a door reader.
+Read the whole page once before touching anything.
 
 **Where it lives (decided 2026-09-26):** the **back door**. The front door has the Raspberry Pi kiosk with the
 USB card reader; this box is the independent second point — no screen, its own power, its own Wi-Fi — so a tap
@@ -39,15 +42,16 @@ Do this with the power **off** (USB unplugged).
 
 ## Step 1 — set the PN532 to I2C
 
-1. Find the two DIP switches on the PN532 board.
-2. Set them to the I2C position per the table printed on the board.
+1. Find the two DIP switches on the PN532 board (yellow block next to the 4-pin header).
+2. Set them to the I2C position per the table printed on the board. **On our Elechouse V3 (HW-147) the printed table
+   reads HSU = 0 0 · I2C = 1 0 · SPI = 0 1 — so switch 1 ON, switch 2 OFF** (confirmed from the module 2026-09-27).
 3. Take a photo of the switches for the record.
 
 ## Step 2 — wire the PN532 to the ESP32 (4 wires)
 
-Power **still off**. The PN532 has a row of header pins; the ones you want are labelled
-**GND, VCC, SDA, SCL** (on I2C boards SDA/SCL may be on the same pins as MOSI/SS — the silkscreen
-usually says both, e.g. "SDA/TXD"). Use the PN532's I2C labels.
+Power **still off**. Use the **4-pin header on the right-hand edge** labelled **SCL, SDA, VCC, GND** (top to
+bottom). The 8-pin row along the bottom (SCK / MISO / MOSI / SS / VCC / GND / IRQ / RSTO) is for SPI — leave it
+empty. The 4-pin header is the one you soldered on.
 
 | PN532 pin | → | ESP32-S3 pin | Wire colour (suggested) |
 | --- | --- | --- | --- |
