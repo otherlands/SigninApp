@@ -19,12 +19,12 @@ Proxmox box, `http://192.168.101.102:3000`) over the office **IOT** Wi-Fi.
 ## What you need
 
 ![The kit as it arrives: blue fob, white card, PN532 (red board), three loose header strips, ESP32-S3 on its USB lead, jumper wires](photos/01-kit-as-delivered.jpg)
-*The kit as delivered (27 Sep 2026). Note the header pins are loose — they need soldering (step 0).*
+*The kit as delivered (27 Sep 2026). Note the header pins are loose — they need soldering before step 1.*
 
 | # | Part | Notes |
 | --- | --- | --- |
 | 1 | **ESP32-S3 dev board** (the one flashed 2026-09-25, MAC `14:c1:9f:d1:32:e4`) | Already has the firmware and Wi-Fi/server settings on it. Any ESP32-S3 DevKitC-style board works if reflashed. |
-| 2 | **PN532 NFC module** (red board, 13.56 MHz, with two tiny DIP switches) | Arrives Sat 2026-09-26. |
+| 2 | **PN532 NFC module** (Elechouse V3 / HW-147, red board, 13.56 MHz, two tiny DIP switches) | Arrived 2026-09-27. Header pins come loose — solder the 4-pin one. |
 | 3 | **Momentary push button** (normally open) — a big red arcade-style one is ideal | Any button that closes when pressed and opens when released. |
 | 4 | **6 female-to-female jumper wires** (Dupont) | 4 for the PN532, 2 for the button. |
 | 5 | **USB-C (or micro-USB) power** — a 5 V phone charger, 1 A is plenty | Powers everything. |
