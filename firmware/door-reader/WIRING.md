@@ -2,7 +2,7 @@
 
 Anyone in the office can build this in about 20 minutes with a screwdriver. **One soldering job**: the PN532 we
 bought (Elechouse V3, marked HW-147, arrived 2026-09-27) ships with its header pins loose in the bag — the 4-pin
-header must be soldered into the GND / VCC / SDA / SCL holes on the right-hand edge before anything else. Ten
+header must be soldered into the GND / VCC / SDA / SCL holes (the short row of four, see the photos) before anything else. Ten
 minutes for anyone who has soldered before; taped or pushed-in pins are not reliable enough for a door reader.
 Read the whole page once before touching anything.
 
@@ -45,10 +45,10 @@ Do this with the power **off** (USB unplugged).
 
 ## Step 1 — set the PN532 to I2C
 
-![PN532 front: DIP switch block top-right with the printed table HSU 0 0 / I2C 1 0 / SPI 0 1; the 4-pin header SCL SDA VCC GND on the right edge; the 8-pin SPI row along the bottom](photos/02-pn532-front-dip-and-i2c-header.jpg)
-*Front of the PN532. The yellow DIP block and its table are top-right; the four holes down the right edge (SCL, SDA, VCC, GND) are the ones we solder and use. The row along the bottom (SCK … IRQ) is SPI — leave it empty.*
+![PN532 front: 4-pin header GND VCC SDA SCL down the left edge; yellow DIP switch block bottom-left with the printed table HSU 0 0 / I2C 1 0 / SPI 0 1; the 8-pin SPI row SCK MISO MOSI SS VCC GND IRQ along the top](photos/02-pn532-front-dip-and-i2c-header.jpg)
+*Front of the PN532 (HW-147). The four holes down the left edge — **GND, VCC, SDA, SCL** — are the ones we solder and use. The yellow DIP block and its table are bottom-left. The row along the top (SCK … IRQ) is SPI — leave it empty.*
 
-1. Find the two DIP switches on the PN532 board (yellow block next to the 4-pin header).
+1. Find the two DIP switches on the PN532 board (yellow block, bottom-left in the photo above, next to the 4-pin header).
 2. Set them to the I2C position per the table printed on the board. **On our Elechouse V3 (HW-147) the printed table
    reads HSU = 0 0 · I2C = 1 0 · SPI = 0 1 — so switch 1 ON, switch 2 OFF** (confirmed from the module 2026-09-27).
 3. Take a photo of the switches for the record.
@@ -58,9 +58,8 @@ Do this with the power **off** (USB unplugged).
 ![PN532 back: ELECHOUSE marking, GND VCC TXD RXD pads at the top, breakout pads down the right](photos/03-pn532-back.jpg)
 *Back of the board — for identification only (Elechouse V3). Nothing is wired on this side; the GND/VCC/TXD/RXD pads at the top are the serial (HSU) option, which we do not use.*
 
-Power **still off**. Use the **4-pin header on the right-hand edge** labelled **SCL, SDA, VCC, GND** (top to
-bottom). The 8-pin row along the bottom (SCK / MISO / MOSI / SS / VCC / GND / IRQ / RSTO) is for SPI — leave it
-empty. The 4-pin header is the one you soldered on.
+Power **still off**. Use the **4-pin header** labelled **GND, VCC, SDA, SCL** (the one you soldered on — down the
+left edge in the photo above). The 8-pin row (SCK / MISO / MOSI / SS / VCC / GND / IRQ) is for SPI — leave it empty.
 
 | PN532 pin | → | ESP32-S3 pin | Wire colour (suggested) |
 | --- | --- | --- | --- |
