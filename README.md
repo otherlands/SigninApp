@@ -12,11 +12,13 @@ on every event. Deliberately **not** taken from Home Presence: camera motion, BL
 and the inferred "auto-away" sign-out — a fire register must only change when a human acts.
 The original one-file JSON version is preserved in git history (`git show 6eab63a:server.js`).
 
-## Where things stand (2026-09-26)
+## Where things stand (2026-09-27)
 
 | Piece | State | Evidence |
 | --- | --- | --- |
-| **Server** v3.3 | **LIVE** on Proxmox CT 106 `signin` (Ubuntu 24.04 LXC), `http://192.168.101.102:3000` | `/api/health` 3.3.0, `signin_up 1`, kiosk renders; installed 2026-09-25 22:36Z |
+| **Server** v3.6 | **LIVE** on Proxmox CT 106 `signin` (Ubuntu 24.04 LXC), `http://192.168.101.102:3000` | `/api/health` 3.6.0 at 21:35Z 2026-09-27 (upgraded from 3.3.0 with `deploy/upgrade-ct106.sh`; db copied to `/root/signin-pre-upgrade-*.sqlite` first); `signin_wifi_enabled 0` until the UniFi key is set |
+| **Presence — Wi-Fi brace** | built + tested; **off** until `UNIFI_URL` + read-only `UNIFI_API_KEY` are in `/etc/eright-signin.env` | startup log: `presence: Wi-Fi brace off` |
+| **Presence — BLE brace** | server side live (`/api/presence/ble`); back-door firmware with the NimBLE scan **compiled, not yet flashed** (board off the lead); no tags bought yet; anchor ESP32 not yet built | `deploy/demo-presence.ps1` drove the full walked-in sequence locally 2026-09-27 |
 | Staff names, company, fire notice | **not yet entered** | Admin → PIN (from the install log) |
 | **Teams webhook** | built + tested against a fake; **URL not yet set** | `TEAMS_WEBHOOK_URL` in `/etc/eright-signin.env`, then START/END drill |
 | **SharePoint copy** | built + tested against a fake; **tenant not yet configured** | `SP_*` lines |
