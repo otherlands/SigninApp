@@ -51,7 +51,7 @@ The original one-file JSON version is preserved in git history (`git show 6eab63
 | `0f6c99e` | 2026-09-26 | **Kiosk parts ordered** (The Pi Hut, £234.30): Pi 5 2 GB, Argon Industria HMI 10CS 10" display + enclosure, Argon PoE+ HAT, THRML cooler, SD. Build steps match the kit; installer copes with Desktop images |
 | `7b998b0` | 2026-09-26 | README: history + current-state summary |
 | `a7b09ac`…`f09c953` | 2026-09-27 | PN532 arrived; WIRING.md/.html with photos; **first real cards read** (back-door reader) |
-| (next) | 2026-09-27 | **v3.4–3.6 Presence**: Wi-Fi brace (UniFi client list) + BLE brace (key tags heard by door/anchor scanners), direction from scanner sequence, auto sign-in, badge-not-act on absence, auto sign-out only when inference undoes inference and both braces agree; ESP32 firmware BLE scan; Pi BLE scanner; enrolment pickers |
+| `6558a2f` `de10b26` | 2026-09-27 | **v3.4–3.6 Presence**: Wi-Fi brace (UniFi client list) + BLE brace (key tags heard by door/anchor scanners), direction from scanner sequence, auto sign-in, badge-not-act on absence, auto sign-out only when inference undoes inference and both braces agree; ESP32 firmware BLE scan; Pi BLE scanner; enrolment pickers. **Live on CT 106 21:35Z** via `deploy/upgrade-ct106.sh` |
 
 Home: `https://github.com/tobygladman2/SigninApp` (also mirrored at `otherlands/SigninApp`; the
 development clone's `origin` has both as push URLs so one push updates both).
@@ -617,15 +617,21 @@ traversal; SharePoint sink (token, site, default/named library, three uploads, s
 upload failure, wrong secret, unconfigured) against a fake Graph endpoint; `/metrics` series and the
 lone-worker / all-safe flags; Teams cards (start / all-safe once / end, immediate flush, order kept, retry after
 503, health + metrics) against a fake webhook; visitor pre-registration (admin-only writes, tablet sees today
-only, one-tap arrival with badge, double-arrival refused, removal). Driven by hand in a browser on 2026-09-25
+only, one-tap arrival with badge, double-arrival refused, removal); presence engine with a driven clock
+(`test/presence.test.js`: Wi-Fi join signs in, phone absence badges but never signs out, BLE door→anchor signs in,
+inferred-in + both braces gone + exit sequence signs out, deliberate acts are never undone). `deploy/demo-presence.ps1`
+drove the whole walked-in sequence against a real server on 2026-09-27 (staff auto-signed-in `source ble`, unknown tag
+surfaced in the picker, metrics correct). Driven by hand in a browser on 2026-09-25
 (v3.3 design): kiosk with expected-visitor banner, visitor page with tap-to-arrive tile, fire page red→green
 ALL ACCOUNTED FOR on a 430 px phone viewport, admin expected-visitor planner; roll call start/mark/end;
 admin card assignment; wedge listener (synthesised keys). Physical reader: identified and its output format
 confirmed with two cards (table above); kiosk end-to-end with it still owed.
 
-Not tested: the physical card reader driving the kiosk page, the ESP32 reading a real card (firmware compiled, flashed, health-checked and its fire button proven against the live server on 2026-09-25 — see "ESP32 door reader"; the PN532 arrives 2026-09-26), a physical webhook button,
+Not tested: the physical card reader driving the kiosk page, a physical webhook button,
 the SharePoint push and the Teams webhook against the real tenant, a real Prometheus scrape from platform-a, iOS Safari specifics,
-and running for weeks (watch `data/` size; it is tiny per event).
+the **radio path of presence** (no BLE firmware flashed yet, no tags bought, no UniFi key set — the engine is proven only with
+synthetic sightings), and running for weeks (watch `data/` size; it is tiny per event). The ESP32 reading a real card IS
+proven (2026-09-27, `C3621F39` / `314F6C0A` — see `firmware/door-reader/WIRING.md`).
 There is no fire-panel integration: the roll call is started by a person (or a button a person
 presses), never by the alarm itself.
 
