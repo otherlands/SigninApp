@@ -21,7 +21,7 @@ The original one-file JSON version is preserved in git history (`git show 6eab63
 | **Teams webhook** | built + tested against a fake; **URL not yet set** | `TEAMS_WEBHOOK_URL` in `/etc/eright-signin.env`, then START/END drill |
 | **SharePoint copy** | built + tested against a fake; **tenant not yet configured** | `SP_*` lines |
 | **Prometheus / e-mail alerts** (llm-cluster) | rules + scrape job in repo; **deploy on platform-a owed** (`SIGNIN_ADDR=192.168.101.102 bash scripts/deploy-signin-monitoring.sh`) | platform-a reaches the server (`signin_up 1` read from it) |
-| **Back-door reader** (ESP32-S3 + PN532) | firmware flashed as `back-door-reader`; Wi-Fi + health 200 + **fire button proven live** (roll call 22:58Z); **PN532 arrives 2026-09-26** | `firmware/door-reader/WIRING.md` |
+| **Back-door reader** (ESP32-S3 + PN532) | firmware flashed as `back-door-reader`; Wi-Fi + health 200 + **fire button proven** (roll call 09-25 22:58Z) + **cards read 09-27 20:34Z** (`C3621F39`, `314F6C0A` as unknown_card) — assign them in Admin | `firmware/door-reader/WIRING.md` |
 | **Front-door kiosk** (Pi 5 + Argon HMI 10CS, PoE) | **parts ordered 2026-09-26, £234.30**; installer written, unverified on hardware | "Door kiosk — Raspberry Pi build" |
 | USB-203 card reader | output format verified; kiosk end-to-end owed (with the Pi) | "Card reader — what has been verified" |
 | DHCP reservation for `.101.102` | owed (UniFi) | keeps `/etc/hosts` on platform-a true |
@@ -423,7 +423,7 @@ and `nfc=ready`. Without a PN532 the firmware probes once, retries every 30 s an
 | `GET /api/health` from the board | **200** every boot |
 | Fire button (GPIO 4 grounded ~2 s, no button fitted) | **roll call opened on the server at 22:58:18Z**, `source=esp32`, `by=door button`; ended from the API 22:59:10Z |
 | PN532 absent | reported once, `nfc=absent`, LED orange, no log flood |
-| Card read | **not yet** — PN532 arrives 2026-09-26 |
+| Card read | **PROVEN 2026-09-27 20:34Z** — white card `C3621F39` and blue fob `314F6C0A` arrived at the server as `unknown_card` from `back-door-reader` (orange flash = unassigned, as designed). Root cause of the first miss: DIP switches left on factory HSU on the second module (`[i2c] bus empty`). |
 
 **Not yet verified:** a real card through the PN532 (first tap should land in Admin → "Last unknown card seen"), the
 RGB LED colours on a board other than this one (`RGB_BUILTIN` must exist — on boards without it the `led()` calls compile to

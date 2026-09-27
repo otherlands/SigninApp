@@ -151,5 +151,9 @@ found the firmware also scans the I2C bus and prints `[i2c] …` — `bus empty`
 PN532 is wired and in I2C mode.
 
 ---
-*Pins are those in `include/config.h` (SDA 8, SCL 9, button 4). Built and bench-tested 2026-09-25:
-Wi-Fi, server health check and the fire button proven; first card read awaits the PN532 (Sat 26 Sep).*
+*Pins are those in `include/config.h` (SDA 8, SCL 9, button 4). Built and bench-tested 2026-09-25 (Wi-Fi, server health,
+fire button) and **2026-09-27: first real cards read** — white card `C3621F39` and blue fob `314F6C0A` reached the server as
+`unknown_card` from `back-door-reader` (orange flash = correct first-time answer). What went wrong first: the 4-pin header
+was soldered on the wrong side of the first PN532, so a second one was soldered up — and its DIP switches were still on
+the factory HSU setting. The log said `[i2c] bus empty`; switches to 1 ON / 2 OFF fixed it. **Every new module: set the
+switches first.***
