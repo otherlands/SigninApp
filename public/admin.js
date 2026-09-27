@@ -15,9 +15,9 @@ function render(data) {
     $('#peopleList').replaceChildren(...data.people.map(p => {
         const row = document.createElement('div');
         row.className = 'person-row';
-        row.innerHTML = `<div><b>${esc(p.name)}</b><br><small class="muted">${p.signedIn ? 'Signed in ' + esc(sinceLabel(p.since)) : 'Signed out'}</small>
+        row.innerHTML = `<div><b>${esc(p.name)}</b><br><small class="muted">${p.signedIn ? 'Signed in ' + esc(sinceLabel(p.since)) + (p.lastSource ? ' · ' + esc(p.lastSource) : '') : 'Signed out'}</small>${presenceChip(p)}
       <input class="card" placeholder="card UID" value="${p.hasCard ? '' : ''}" data-id="${p.id}" style="margin-top:6px" title="${p.hasCard ? 'A card is assigned. Present a new card to replace it, or type CLEAR to remove.' : 'No card assigned'}">
-      ${p.hasCard ? '<small class="muted">card assigned</small>' : ''}</div>`;
+      <small class="muted">${p.hasCard ? 'card ✓' : 'no card'} · ${p.hasPhone ? 'phone ✓' : 'no phone'} · ${p.hasTag ? 'key tag ✓' : 'no key tag'}</small></div>`;
         const actions = document.createElement('div');
         actions.className = 'row';
         const toggle = document.createElement('button'); toggle.className = 'small'; toggle.textContent = p.signedIn ? 'Sign out' : 'Sign in';
@@ -64,6 +64,45 @@ function render(data) {
 
 function localToday() {
     const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Chip shown next to a signed-in person: what the phone / key tag say. */
+function presenceChip(p) {
+    if (!p.signedIn || !p.presence) return '';
+    const b = p.presence;
+    if (b.state === 'here') return ` <span class="chip green" title="phone or key tag seen inside">📱 here</span>`;
+    if (b.state === 'probably-left') return ` <span class="chip amber" title="phone and tag both absent">📵 probably left ${esc(SI.fmtTime(b.lastSeen))}</span>`;
+    return ` <span class="chip" title="enrolled but nothing seen yet today">no signal</span>`;
+}
+
+/** Presence panel: Wi-Fi/scanner health + tap-to-assign pickers for phones and key tags. */
+async function loadPresence() {
+    const d = await api('GET', '/api/presence');
+    const h = d.health;
+    const parts = [];
+    parts.push(h.wifi.enabled ? `Wi-Fi brace: <b style="color:var(--in)">on</b> · last poll ${h.wifi.lastPoll ? (h.wifi.lastPoll.ok ? 'ok ' + esc(fmtWhen(h.wifi.lastPoll.at)) + ' (' + h.wifi.lastPoll.count + ' clients)' : '<b style="color:var(--amber)">FAILED</b> ' + esc(h.wifi.lastPoll.error)) : 'not yet'}` : 'Wi-Fi brace: <b style="color:var(--amber)">off</b> (set UNIFI_URL + UNIFI_API_KEY on the server)');
+    parts.push(h.scanners.length ? 'BLE scanners: ' + h.scanners.map(s => `<b>${esc(s.name)}</b> ${s.ageS < 120 ? '<span style="color:var(--in)">live</span>' : '<span style="color:var(--amber)">quiet ' + Math.round(s.ageS / 60) + ' min</span>'}`).join(' · ') : 'BLE scanners: none have reported yet');
+    if (h.tags.length) parts.push('Key tags: ' + h.tags.map(t => `${esc(t.person)} ${t.ageS === null ? '<span class="muted">never heard</span>' : t.ageS > 7 * 86400 ? '<b style="color:var(--amber)">not heard for ' + Math.round(t.ageS / 86400) + ' days — battery?</b>' : 'heard ' + esc(fmtWhen(t.lastHeard))}`).join(' · '));
+    $('#presenceHealth').innerHTML = parts.join('<br>');
+
+    const people = d.people;
+    const picker = (items, label, field) => {
+        if (!items.length) return `<p class="muted">No unenrolled ${label} seen in the last 10 minutes.</p>`;
+        return items.map(it => {
+            const id = it.mac || it.ident;
+            const sel = `<select data-assign="${field}" data-ident="${esc(id)}"><option value="">assign to…</option>${people.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>`;
+            return `<div class="visitor-row"><span><code>${esc(id)}</code> <small class="muted">${esc(it.hostname || '')} ${it.ap ? '· ' + esc(it.ap) : ''}${it.scanner ? '· heard at ' + esc(it.scanner) : ''} ${it.last ? '· ' + esc(SI.fmtTime(it.last)) : ''}</small></span>${sel}</div>`;
+        }).join('');
+    };
+    $('#phonePicker').innerHTML = picker(d.candidates.phones, 'phones on the office Wi-Fi', 'phoneMac');
+    $('#tagPicker').innerHTML = picker(d.candidates.tags, 'key tags', 'tagId');
+    document.querySelectorAll('select[data-assign]').forEach(sel => {
+        sel.onchange = () => {
+            if (!sel.value) return;
+            const body = {}; body[sel.dataset.assign] = sel.dataset.ident;
+            api('PATCH', `/api/people/${sel.value}`, body).then(() => { notice(noticeEl, `${sel.dataset.assign === 'phoneMac' ? 'Phone' : 'Key tag'} assigned.`); load(); }).catch(showError);
+        };
+    });
 }
 
 function renderExpected(list) {
@@ -124,6 +163,7 @@ async function load() {
         await loadEvents();
         await loadHealth();
         await loadExpected();
+        await loadPresence();
         $('#pinPanel').classList.add('hidden');
     } catch (error) { showError(error); }
 }

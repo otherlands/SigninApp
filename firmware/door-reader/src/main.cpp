@@ -1,7 +1,8 @@
-// eRIGHT sign-in v3 — optional ESP32-S3 door reader.
-// Reads an NFC card UID from a PN532 and POSTs it to /api/sign on the main server.
-// A held button starts a fire roll call. Built-in RGB LED shows state.
-// NOT COMPILED HERE: build and bench-test with PlatformIO before fitting it to a door.
+// eRIGHT sign-in — ESP32-S3 door reader / presence scanner.
+// Reads an NFC card UID from a PN532 and POSTs it to /api/sign; a held button starts a fire roll call; the built-in
+// RGB LED shows state. v3.5: also scans BLE for staff key tags (iBeacon or fixed-address beacons) and POSTs batched
+// sightings to /api/presence/ble every BLE_POST_MS — the same firmware runs as a door scanner or an inside anchor,
+// only SCANNER_NAME / SCANNER_ROLE differ (config.h). First compiled + flashed 2026-09-25; cards read 2026-09-27.
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -9,6 +10,9 @@
 #include <Preferences.h>
 #include <Adafruit_PN532.h>
 #include "config.h"
+#if BLE_SCAN
+#include <NimBLEDevice.h>
+#endif
 
 // Log to both the native-USB CDC port and UART0 so a bench UART lead sees everything
 #define LOG(...)                     \
@@ -200,19 +204,120 @@ void handleFireButton()
     buttonWasDown = down;
 }
 
+#if BLE_SCAN
+// ---- BLE presence scanner -------------------------------------------------------------------------------------
+// Tag identity: iBeacon frames (Apple 0x004C, type 0x02 len 0x15) -> "ibeacon:<uuid>:<major>:<minor>"; any other
+// advertiser with a PUBLIC (fixed) address -> "mac:AA:BB:...". Random addresses (phones) are ignored: they are not
+// identities. Per window we keep the strongest RSSI per tag and post the batch once.
+struct Seen
+{
+    String tag;
+    int rssi;
+};
+static Seen seen[24];
+static int seenN = 0;
+static unsigned long lastBlePost = 0;
+static uint32_t bleBatches = 0, bleTags = 0;
+
+void noteTag(const String &tag, int rssi)
+{
+    for (int i = 0; i < seenN; i++)
+        if (seen[i].tag == tag)
+        {
+            if (rssi > seen[i].rssi)
+                seen[i].rssi = rssi;
+            return;
+        }
+    if (seenN < (int)(sizeof(seen) / sizeof(seen[0])))
+    {
+        seen[seenN].tag = tag;
+        seen[seenN].rssi = rssi;
+        seenN++;
+    }
+}
+
+class ScanCb : public NimBLEScanCallbacks
+{
+    void onResult(const NimBLEAdvertisedDevice *d) override
+    {
+        std::string md = d->getManufacturerData();
+        if (md.size() >= 25 && (uint8_t)md[0] == 0x4C && (uint8_t)md[1] == 0x00 && (uint8_t)md[2] == 0x02 && (uint8_t)md[3] == 0x15)
+        {
+            char uuid[37];
+            const uint8_t *u = (const uint8_t *)md.data() + 4;
+            snprintf(uuid, sizeof uuid, "%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X%02X%02X%02X%02X",
+                     u[0], u[1], u[2], u[3], u[4], u[5], u[6], u[7], u[8], u[9], u[10], u[11], u[12], u[13], u[14], u[15]);
+            uint16_t major = ((uint8_t)md[20] << 8) | (uint8_t)md[21], minor = ((uint8_t)md[22] << 8) | (uint8_t)md[23];
+            noteTag(String("ibeacon:") + uuid + ":" + major + ":" + minor, d->getRSSI());
+            return;
+        }
+        if (d->getAddress().getType() == BLE_ADDR_PUBLIC)
+        {
+            String mac = d->getAddress().toString().c_str();
+            mac.toUpperCase();
+            noteTag("mac:" + mac, d->getRSSI());
+        }
+    }
+};
+static ScanCb scanCb;
+
+void bleBegin()
+{
+    NimBLEDevice::init("");
+    NimBLEScan *s = NimBLEDevice::getScan();
+    s->setScanCallbacks(&scanCb, false);
+    s->setActiveScan(false); // passive: beacons broadcast, no scan-request traffic
+    s->setInterval(100);
+    s->setWindow(60);             // 60 % duty leaves Wi-Fi its share of the shared radio
+    s->setDuplicateFilter(false); // we want every frame so RSSI max is fresh
+    s->start(0, false, true);     // continuous
+    LOG("[ble] scanner '%s' role=%s scanning\n", SCANNER_NAME, SCANNER_ROLE);
+}
+
+void blePost()
+{
+    if (millis() - lastBlePost < BLE_POST_MS)
+        return;
+    lastBlePost = millis();
+    if (seenN == 0 || WiFi.status() != WL_CONNECTED)
+    {
+        seenN = 0;
+        return;
+    }
+    String body = "{\"scanner\":\"" SCANNER_NAME "\",\"sightings\":[";
+    for (int i = 0; i < seenN; i++)
+        body += String(i ? "," : "") + "{\"tag\":\"" + seen[i].tag + "\",\"rssi\":" + seen[i].rssi + "}";
+    body += "]}";
+    int n = seenN;
+    seenN = 0;
+    int status = postJson("/api/presence/ble", body);
+    if (status == 200)
+    {
+        bleBatches++;
+        bleTags += n;
+    }
+}
+#endif
+
 void setup()
 {
     Serial.begin(115200);
     Serial0.begin(115200); // UART0 = the CH343 bench lead; Serial = native USB CDC
     delay(300);
-    LOG("\n[boot] eRIGHT door reader %s -> %s\n", DEVICE_NAME, SERVER_URL);
+    LOG("\n[boot] eRIGHT %s '%s' -> %s\n", SCANNER_ROLE, DEVICE_NAME, SERVER_URL);
     pinMode(PIN_FIRE_BUTTON, INPUT_PULLUP);
     prefs.begin("door", false);
     eventCounter = prefs.getUInt("counter", 0);
 
-    Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
-    probeNfc();
+    if (HAS_PN532)
+    {
+        Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+        probeNfc();
+    }
     ensureWifi();
+#if BLE_SCAN
+    bleBegin();
+#endif
 }
 
 // Resting colour, re-asserted every loop so the guide's LED table stays true: purple no Wi-Fi, orange no PN532, dim blue ready.
@@ -220,7 +325,7 @@ void steadyLed()
 {
     if (WiFi.status() != WL_CONNECTED)
         led(LED_NOWIFI);
-    else if (!nfcReady)
+    else if (HAS_PN532 && !nfcReady)
         led(LED_FAIL);
     else
         led(LED_IDLE);
@@ -236,15 +341,29 @@ void loop()
         checkServer();
     if (WiFi.status() != WL_CONNECTED)
         serverChecked = false;
+#if BLE_SCAN
+    blePost();
+#endif
 
     if (millis() - lastStatus >= 30000)
     {
         lastStatus = millis();
+#if BLE_SCAN
+        LOG("[status] up %lus wifi=%s ip=%s rssi=%d nfc=%s events=%u ble_batches=%u ble_tags=%u\n", millis() / 1000,
+            WiFi.status() == WL_CONNECTED ? "up" : "down", WiFi.localIP().toString().c_str(), WiFi.RSSI(),
+            HAS_PN532 ? (nfcReady ? "ready" : "absent") : "n/a", eventCounter, bleBatches, bleTags);
+#else
         LOG("[status] up %lus wifi=%s ip=%s rssi=%d nfc=%s events=%u\n", millis() / 1000,
             WiFi.status() == WL_CONNECTED ? "up" : "down", WiFi.localIP().toString().c_str(), WiFi.RSSI(),
-            nfcReady ? "ready" : "absent", eventCounter);
+            HAS_PN532 ? (nfcReady ? "ready" : "absent") : "n/a", eventCounter);
+#endif
     }
 
+    if (!HAS_PN532)
+    {
+        delay(20);
+        return;
+    }
     if (!nfcReady)
     {
         if (millis() - lastNfcProbe >= 30000)

@@ -1,4 +1,4 @@
-# eRIGHT Sign-In v3.3 — staff & visitor register with fire roll call
+# eRIGHT Sign-In v3.6 — staff & visitor register with fire roll call
 
 Small LAN system for a single door: 8 staff, visitors, and — because eRIGHT has **no designated
 fire marshal** — a register that anyone at the assembly point can open on a phone and that is
@@ -47,7 +47,9 @@ The original one-file JSON version is preserved in git history (`git show 6eab63
 | `aa5682e` | 2026-09-26 | **Door kiosk = Raspberry Pi** (no battery, PoE, cage + Chromium): `deploy/kiosk-pi/install.sh`, parts list and build steps; kiosk page accepts a one-time `?cardToken=` hand-in |
 | `a1343b8` | 2026-09-26 | **Decision: ESP32 + PN532 = back-door reader + fire button** (`back-door-reader`, reflashed); front door = Pi kiosk + USB-203. Two independent tap points, no new code |
 | `0f6c99e` | 2026-09-26 | **Kiosk parts ordered** (The Pi Hut, £234.30): Pi 5 2 GB, Argon Industria HMI 10CS 10" display + enclosure, Argon PoE+ HAT, THRML cooler, SD. Build steps match the kit; installer copes with Desktop images |
-| (next) | 2026-09-26 | README: history + current-state summary |
+| `7b998b0` | 2026-09-26 | README: history + current-state summary |
+| `a7b09ac`…`f09c953` | 2026-09-27 | PN532 arrived; WIRING.md/.html with photos; **first real cards read** (back-door reader) |
+| (next) | 2026-09-27 | **v3.4–3.6 Presence**: Wi-Fi brace (UniFi client list) + BLE brace (key tags heard by door/anchor scanners), direction from scanner sequence, auto sign-in, badge-not-act on absence, auto sign-out only when inference undoes inference and both braces agree; ESP32 firmware BLE scan; Pi BLE scanner; enrolment pickers |
 
 Home: `https://github.com/tobygladman2/SigninApp` (also mirrored at `otherlands/SigninApp`; the
 development clone's `origin` has both as push URLs so one push updates both).
@@ -96,6 +98,8 @@ Environment variables (all optional):
 | `TZ_NAME` | IANA zone for "today" and CSV times, default `Europe/London`. |
 | `TEAMS_WEBHOOK_URL` | **Teams channel push** — a Workflows webhook URL. Roll-call start, all-safe and end are posted as Adaptive Cards within seconds (queued in SQLite, retried every 15 s for up to an hour). See "Teams channel". |
 | `PUBLIC_URL` | The address staff phones use, e.g. `http://192.168.101.40:3000`. Gives Teams cards an **Open the roll call** button. |
+| `UNIFI_URL`, `UNIFI_API_KEY`, `UNIFI_SITE`, `UNIFI_CLIENTS_PATH`, `UNIFI_SSID` | **Presence, Wi-Fi brace** — the UniFi controller (UDM) and a read-only API key; the server polls the client list every 30 s. Path default `/proxy/network/api/s/{site}/stat/sta` (UniFi OS); legacy controllers use `/api/s/{site}/stat/sta`. Optional `UNIFI_SSID` restricts matching to one network. Unset = brace off. |
+| `DOOR_SCANNERS`, `ANCHOR_SCANNERS` | **Presence, BLE brace** — comma-separated scanner names that sit at doors (default `front-door,back-door`) and inside (default `anchor`). Must match `SCANNER_NAME` on each scanner. |
 | `SP_TENANT_ID`, `SP_CLIENT_ID`, `SP_CLIENT_SECRET`, `SP_SITE`, `SP_DRIVE`, `SP_FOLDER` | **SharePoint off-site copy** — see the section below. All four of tenant/client/secret/site must be set for it to switch on. |
 
 Data lives in `data/signin.sqlite` (+ `-wal`), git-ignored. Back it up. `deploy/` has systemd
@@ -124,6 +128,68 @@ metrics — all against a fake webhook in `test/app.test.js`. **Not yet verified
 real START/END is that evidence. The message uses the `attachments[].contentType =
 application/vnd.microsoft.card.adaptive` shape that Workflows webhooks accept (the same family the estate's
 Alertmanager `msteamsv2` receiver posts).
+
+## Presence — belt and braces, so nobody has to remember to tap (v3.4–3.6)
+
+Staff forget to tap; they never forget their phone or their keys. v3.4–3.6 add two independent, always-on carriers and
+three fixed radios, and a rule set that keeps the fire register honest.
+
+**Carriers (what the person has on them)**
+
+| Carrier | Sensor | Power | Honest limit |
+| --- | --- | --- | --- |
+| **Phone on the office Wi-Fi** | the UniFi controller's client list, polled every 30 s | the phone's own | iPhone "Private Wi-Fi Address" must be **Fixed** (not Rotating) for the office SSID; Wi-Fi off = invisible |
+| **BLE tag on the keys** (iBeacon-class, coin cell) | door scanners + an inside anchor | CR2032, 1–2 years always-on | can be left on a desk (= over-count, the safe failure); a flat battery is alerted (below) |
+
+**Radios (fixed, mains/PoE)**: the **Pi kiosk** at the front door (`deploy/kiosk-pi/ble-scanner.py` + `signin-ble-scanner.service`),
+the **ESP32-S3 at the back door** (same firmware, `BLE_SCAN 1`, `SCANNER_NAME "back-door"`), and one **inside anchor** (a third
+ESP32-S3, `SCANNER_ROLE "anchor"`, `HAS_PN532 0`). Each posts `{tag, rssi}` batches to `POST /api/presence/ble` every 5 s. Phones'
+random BLE addresses are ignored by every scanner — a phone without an app is not a BLE identity; the tag is.
+
+**Direction = sequence, not RSSI magic**: door scanner then anchor within 2 min = **walked in**; anchor then door then
+3 min of silence = **walked out**; door only = no decision. Tag ids are the same string on every scanner:
+`ibeacon:<UUID>:<major>:<minor>` or `mac:AA:BB:CC:DD:EE:FF`.
+
+**The rules (the fire-safety contract, in order of authority)**
+
+| Evidence | Register | Failure direction |
+| --- | --- | --- |
+| Card / kiosk / `/tap` / admin | truth, as before | — |
+| Walked-in sequence, **or** phone joins the Wi-Fi, **or** tag heard at the anchor | **auto sign-in** (`source: ble` / `wifi`, note names the evidence) | over-count only → safe |
+| Sign-in was **inferred** **and** both braces absent ≥ 10 min **and** the tag walked out past a door | **auto sign-out** (`source: ble+wifi`) | needs a dead tag *and* a dead phone *and* a false exit sequence to under-count |
+| Only one brace says "left", or the person tapped in **deliberately** | **shown, never acted on**: 📵 *probably left 17:32* on the kiosk, `/fire`, Admin and `who-is-on-site.txt`; the person stays on the roll call | over-count → safe |
+
+In one line: **inference may undo inference; only a human may undo a human.**
+
+**Enrolment** is like cards: Admin → *Presence* lists phones seen on the office Wi-Fi and tags heard by any scanner in the
+last 10 minutes that nobody owns yet — pick the person from the dropdown. Only enrolled MACs/tags are stored as evidence;
+unknown ones live 10 minutes for the picker and are pruned. One phone / one tag = one person (409 otherwise).
+
+**Guards** (so the always-on layer cannot rot quietly): `signin_scanner_last_report_age_seconds{scanner}` (a scanner has gone
+quiet), `signin_tag_last_heard_age_seconds{tag}` (a tag not heard for 7 days while its owner tapped in = flat battery or lost),
+`signin_wifi_last_poll_ok`, `signin_probably_left`, `signin_presence_here`. Every automatic event's note names its evidence
+(`walked in: tag heard at back-door then inside (08:01)`), so the log is auditable, not magic.
+
+**Governance**: staff consent; the data is a tag id + which of three scanners heard it + phone seen/unseen inside one building;
+retention is the event log already kept, sightings 14 days.
+
+**Verified**: the whole engine — Wi-Fi auto-in, picker, single-brace never signs out, door→anchor = in, anchor→door→silence +
+phone gone = out *only* for an inferred sign-in, a card sign-in surviving the same pattern, metrics, 401 on a bad key — against a
+fake controller and fake scanners on a driven clock (`test/presence.test.js`). Firmware compiles with NimBLE (RAM 15.5 %, flash
+29.8 %). **Not yet verified**: a real UDM client list (the eRIGHT controller's address/key are not on record), a real tag, the Pi
+scanner on hardware, the BLE/Wi-Fi coexistence duty on the ESP32 under load.
+
+### "I forgot my keys" — the director question
+
+A director has forgotten his keys 7 times in 6 weeks but never his phone. The presence layer above tells the *office* his
+keys aren't with him (phone joined the Wi-Fi, tag never heard → Admin shows "phone here, no key tag") — useful, but too late.
+The alert he needs is **50 m from his house**, and the honest answer is not to write a phone app: both phone platforms already
+ship exactly this feature for their own tags — **Apple AirTag → Find My → "Notify When Left Behind"** (iPhone) or a **Google Find
+My Device tag (Chipolo/Pebblebee) → "left behind" alert** (Android). Put one on the keyring next to our presence tag: the AirTag
+nags him at the front door of his house; our iBeacon signs him in at the office. An AirTag's own BLE identity rotates for privacy,
+so it cannot double as the presence tag — hence two tags on one ring. A bespoke app (Core Location geofence + Core Bluetooth
+ranging in the background) would do the same for ~weeks of work and an App Store/TestFlight tail; it is the right answer only if
+the off-the-shelf alert proves unreliable for him.
 
 ## Visitor pre-registration (v3.3)
 
@@ -497,6 +563,10 @@ flowchart LR
 | POST | `/api/expected` | admin: `{name, company?, hostId?, day?: YYYY-MM-DD, vehicle?, note?}` → 201 |
 | DELETE | `/api/expected/:id` | admin; unarrived rows only |
 | POST | `/api/expected/:id/arrive` | tablet: signs the visitor in from the plan row → 201 `{visitor, state}`; 409 if already arrived |
+| POST | `/api/presence/ble` | scanners (API token): `{scanner, sightings:[{tag, rssi, at?}]}` → `{scanner, received, enrolled}` |
+| GET | `/api/presence` | admin: `{health:{wifi, scanners, tags, thresholds}, candidates:{phones, tags}, people:[{presence}]}` |
+| POST | `/api/presence/poll` | admin: force one UniFi poll now → `{at, ok, count|error}` |
+| PATCH | `/api/people/:id` | also accepts `phoneMac`, `tagId` (409 if owned by someone else; `""` clears) |
 | GET | `/api/fire` | open roll call (with marks) + live roster |
 | POST | `/api/fire/start` | `{source, by?}` → 201, or 200 `alreadyOpen` |
 | POST | `/api/fire/mark` | `{subjectType:"staff"|"visitor", subjectId, status:"safe"|"missing"|"clear", by?}` |

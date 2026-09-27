@@ -22,7 +22,8 @@ function render(data) {
         const sub = person.signedIn
             ? (person.stale ? `⚠ Signed in ${sinceLabel(person.since)} — tap to sign out` : `In ${sinceLabel(person.since)} — tap to sign out`)
             : 'Tap to sign in';
-        b.innerHTML = `<strong>${esc(person.name)}</strong><span>${esc(sub)}</span>${person.hasCard ? '<span class="badge">card</span>' : ''}`;
+        const pres = person.signedIn && person.presence ? (person.presence.state === 'here' ? '<span class="badge" title="phone or key tag seen inside">📱</span>' : person.presence.state === 'probably-left' ? `<span class="badge" title="phone and key tag absent">📵 ${SI.fmtTime(person.presence.lastSeen)}</span>` : '') : '';
+        b.innerHTML = `<strong>${esc(person.name)}</strong><span>${esc(sub)}</span>${pres || (person.hasCard ? '<span class="badge">card</span>' : '')}`;
         b.onclick = () => sign({ personId: person.id }, person.name);
         return b;
     }));

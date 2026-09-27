@@ -80,6 +80,24 @@
             </div>
             <h2 style="margin-top:24px">Off-site copies</h2>
             <p class="muted" id="offsiteState">…</p>
+
+            <h2 style="margin-top:24px">Presence — phones &amp; key tags</h2>
+            <p class="muted">Belt and braces: a phone on the office Wi-Fi and a BLE tag on the keys. Either one seen
+                inside signs a
+                person <b>in</b> automatically. Nothing is ever signed <b>out</b> by inference unless the sign-in was
+                itself
+                inferred <i>and</i> both have gone <i>and</i> the tag walked out past a door; otherwise the register
+                just
+                shows 📵 <i>probably left</i>. A card or kiosk tap always wins.</p>
+            <p class="muted" id="presenceHealth">…</p>
+            <h3 class="muted" style="font-size:.85rem;margin-top:10px">Phones on the office Wi-Fi not yet assigned</h3>
+            <div id="phonePicker"></div>
+            <h3 class="muted" style="font-size:.85rem;margin-top:10px">Key tags heard by a scanner not yet assigned</h3>
+            <div id="tagPicker"></div>
+            <p class="muted" style="font-size:.85rem">To un-assign, set the field to CLEAR via the API for now (or ask
+                Alan). iPhones: set the office Wi-Fi's Private Address to
+                <b>Fixed</b>, not Rotating, or the phone will look like a new device every day.
+            </p>
         </section>
 
         <section class="panel" style="grid-column:1/-1">

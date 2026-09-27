@@ -275,7 +275,7 @@ test('/metrics exposes counts only: lone worker, roll call, all-safe, off-site c
         assert.match(r.text, /^signin_local_hour (\d|1\d|2[0-3])$/m);
         assert.match(r.text, /^signin_sharepoint_configured 0$/m);
         assert.doesNotMatch(r.text, /signin_sharepoint_last_push/, 'no push yet = no series, not a fake 0');
-        assert.match(r.text, /^signin_info\{version="3\.3\.0",tz="Europe\/London"\} 1$/m);
+        assert.match(r.text, /^signin_info\{version="3\.6\.0",tz="Europe\/London"\} 1$/m);
 
         r = await call('POST', '/api/people', { name: 'Alone Person' }, H);
         const p = r.json.people[0];

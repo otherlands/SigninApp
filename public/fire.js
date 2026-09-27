@@ -57,7 +57,9 @@ function renderRows(el, rows, type, marks, active) {
         row.className = `roll-row ${mk ? mk.status : ''}`;
         const detail = type === 'visitor'
             ? [item.company, item.hostName ? `visiting ${item.hostName}` : null, item.vehicle, `badge ${item.badge}`].filter(Boolean).join(' · ')
-            : (item.stale ? '<span class="stale-tag">⚠ signed in before today — may have forgotten to sign out</span>' : '');
+            : [item.stale ? '<span class="stale-tag">⚠ signed in before today — may have forgotten to sign out</span>' : '',
+            item.presence?.state === 'probably-left' ? `<span class="stale-tag">📵 phone/tag last seen ${fmtTime(item.presence.lastSeen)} — probably already out</span>` : '',
+            item.presence?.state === 'here' ? '<span style="color:var(--in)">📱 phone/tag seen inside</span>' : ''].filter(Boolean).join(' · ');
         row.innerHTML = `<div><strong>${esc(item.name)}</strong><small>${type === 'visitor' ? esc(detail) : detail}${detail ? ' · ' : ''}${esc(sinceLabel(item.since))}</small>
       ${mk ? `<small>${mk.status === 'safe' ? '✔ SAFE' : '✖ MISSING'} at ${fmtTime(mk.at)}${mk.by ? ' by ' + esc(mk.by) : ''}</small>` : ''}</div>`;
         if (active && !offline) {

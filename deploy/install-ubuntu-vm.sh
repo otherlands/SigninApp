@@ -59,6 +59,15 @@ SP_CLIENT_SECRET=
 SP_SITE=
 SP_DRIVE=
 SP_FOLDER=eRIGHT Ltd/Sign-in
+# Presence (v3.4-3.6). Wi-Fi brace: the UniFi controller (UDM) address + a READ-ONLY API key; leave blank to disable.
+# UDM/UniFi OS path is the default; a legacy controller uses UNIFI_CLIENTS_PATH=/api/s/{site}/stat/sta
+UNIFI_URL=
+UNIFI_API_KEY=
+UNIFI_SITE=default
+UNIFI_SSID=
+# BLE brace: scanner names (comma-separated) that sit at doors vs inside; must match SCANNER_NAME on each scanner.
+DOOR_SCANNERS=front-door,back-door
+ANCHOR_SCANNERS=anchor
 EOF
   chmod 600 "$ENVF"
   echo "  WRITTEN $ENVF — the generated ADMIN_PIN is $PIN and API_TOKEN is $TOK. Record them now; they are not printed again."

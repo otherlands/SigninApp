@@ -1,0 +1,28 @@
+# /etc/systemd/system/signin-ble-scanner.service — front-door BLE presence scanner on the Pi kiosk (v3.5).
+# Install: sudo apt-get install -y python3-bleak  (or: sudo pip3 install --break-system-packages bleak)
+#          sudo install -m 0644 signin-ble-scanner.service /etc/systemd/system/
+#          sudo tee /etc/signin-ble-scanner.env <<EOF   (chmod 600)
+#            SIGNIN_URL=http://192.168.101.102:3000
+#            SIGNIN_TOKEN=<API_TOKEN from the server env>
+#            SCANNER_NAME=front-door
+#          EOF
+#          sudo systemctl enable --now signin-ble-scanner
+[Unit]
+Description=eRIGHT sign-in BLE presence scanner (key tags -> /api/presence/ble)
+After=bluetooth.target network-online.target
+Wants=bluetooth.target network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/signin-ble-scanner.env
+ExecStart=/usr/bin/python3 /opt/eright-signin/deploy/kiosk-pi/ble-scanner.py
+Restart=always
+RestartSec=5
+# BlueZ scanning needs the bluetooth group (or root); keep the rest tight
+User=root
+NoNewPrivileges=true
+ProtectSystem=strict
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
