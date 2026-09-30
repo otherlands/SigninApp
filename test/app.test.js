@@ -83,6 +83,20 @@ test('card UID sign-in, unknown card is recorded, duplicate eventKey is idempote
         const other = r.json.people.find(p => p.name === 'Other');
         r = await call('PATCH', `/api/people/${other.id}`, { cardUid: '04A1B2C3' });
         assert.equal(r.status, 409, 'card cannot be assigned twice');
+
+        // USB-203 keyboard wedge types 10 decimal digits; the ESP32 posts hex — same card, one person.
+        r = await call('PATCH', `/api/people/${other.id}`, { cardUid: '3175933060' });
+        assert.equal(r.status, 200);
+        assert.equal(r.json.people.find(p => p.id === other.id).hasCard, true);
+        r = await call('POST', '/api/sign', { cardUid: 'BD4CE484', source: 'card' }, { 'X-Api-Token': 'secret' });
+        assert.equal(r.status, 200, 'hex form of the decimal-enrolled card signs the same person in');
+        assert.equal(r.json.event.subjectId, other.id);
+        r = await call('POST', '/api/sign', { cardUid: '3175933060', source: 'card' }, { 'X-Api-Token': 'secret' });
+        assert.equal(r.json.event.kind, 'out', 'decimal form toggles the same person back out');
+        r = await call('POST', '/api/sign', { cardUid: '12345678', source: 'card' }, { 'X-Api-Token': 'secret' });
+        assert.equal(r.status, 404);
+        r = await call('GET', '/api/state');
+        assert.equal(r.json.lastUnknownCard.uid, '12345678', 'an 8-char all-digit hex UID is not treated as decimal');
     } finally { await close(); }
 });
 
