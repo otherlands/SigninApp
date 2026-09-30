@@ -20,7 +20,7 @@ The original one-file JSON version is preserved in git history (`git show 6eab63
 | **Presence — Wi-Fi brace** | built + tested; **off** until `UNIFI_URL` + read-only `UNIFI_API_KEY` are in `/etc/eright-signin.env` | startup log: `presence: Wi-Fi brace off` |
 | **Presence — BLE brace** | server side live (`/api/presence/ble`); back-door firmware with the NimBLE scan **compiled, not yet flashed** (board off the lead); no tags bought yet; anchor ESP32 not yet built | `deploy/demo-presence.ps1` drove the full walked-in sequence locally 2026-09-27 |
 | Staff names, company, fire notice | **not yet entered** | Admin → PIN (from the install log) |
-| **Teams webhook** | built + tested against a fake; **URL not yet set** | `TEAMS_WEBHOOK_URL` in `/etc/eright-signin.env`, then START/END drill |
+| **Teams webhook** | **live** — URL set 2026-09-30, END card landed in eRIGHT › General 2026-10-01 | regenerate the URL (sig was pasted in chat), re-set in `/etc/eright-signin.env` |
 | **SharePoint copy** | built + tested against a fake; **tenant not yet configured** | `SP_*` lines |
 | **Prometheus / e-mail alerts** (llm-cluster) | rules + scrape job in repo; **deploy on platform-a owed** (`SIGNIN_ADDR=192.168.101.102 bash scripts/deploy-signin-monitoring.sh`) | platform-a reaches the server (`signin_up 1` read from it) |
 | **Back-door reader** (ESP32-S3 + PN532) | firmware flashed as `back-door-reader`; Wi-Fi + health 200 + **fire button proven** (roll call 09-25 22:58Z) + **cards read 09-27 20:34Z** (`C3621F39`, `314F6C0A` as unknown_card) — assign them in Admin | `firmware/door-reader/WIRING.md` |
@@ -125,11 +125,19 @@ URL it gives you → put it in `/etc/eright-signin.env` as `TEAMS_WEBHOOK_URL=` 
 `sudo systemctl restart eright-signin`. Test by pressing START and END on `/fire`. Admin → Off-site copies
 shows the last post's result; `signin_teams_last_send_ok` is on `/metrics`.
 
+If the channel's ⋯ menu has no **Workflows** entry, build it in make.powerautomate.com from the template
+**"Send webhook alerts to a channel"** (same flow, renamed). Gotcha seen 2026-09-30: that template's
+"Post card" step sits inside a **For each** over `attachments` and failed with *"The sender with objectId … is
+not a member or an owner of the team or channel"* even though the connection user was a team owner. Fix that
+worked: delete the **For each**, add one **Post card in a chat or channel** in the False branch with
+**Post as = Flow bot**, **Post in = Channel**, Team/Channel picked from the dropdowns, and **Adaptive Card =**
+`triggerBody()?['attachments']?[0]?['content']`. The server only ever sends one attachment.
+
 **Verified:** card shape, ordering, immediate flush, once-per-roll-call all-safe, retry after a 503, health and
-metrics — all against a fake webhook in `test/app.test.js`. **Not yet verified:** a real Teams tenant; the first
-real START/END is that evidence. The message uses the `attachments[].contentType =
-application/vnd.microsoft.card.adaptive` shape that Workflows webhooks accept (the same family the estate's
-Alertmanager `msteamsv2` receiver posts).
+metrics — against a fake webhook in `test/app.test.js`; and **against the real eRIGHT tenant on 2026-10-01**
+(END card posted by Flow bot into eRIGHT › General, `signin_teams_last_send_ok 1`). The message uses the
+`attachments[].contentType = application/vnd.microsoft.card.adaptive` shape that Workflows webhooks accept
+(the same family the estate's Alertmanager `msteamsv2` receiver posts).
 
 ## Presence — belt and braces, so nobody has to remember to tap (v3.4–3.6)
 
@@ -628,10 +636,11 @@ admin card assignment; wedge listener (synthesised keys). Physical reader: ident
 confirmed with two cards (table above); kiosk end-to-end with it still owed.
 
 Not tested: the physical card reader driving the kiosk page, a physical webhook button,
-the SharePoint push and the Teams webhook against the real tenant, a real Prometheus scrape from platform-a, iOS Safari specifics,
+the SharePoint push against the real tenant, a real Prometheus scrape from platform-a, iOS Safari specifics,
 the **radio path of presence** (no BLE firmware flashed yet, no tags bought, no UniFi key set — the engine is proven only with
 synthetic sightings), and running for weeks (watch `data/` size; it is tiny per event). The ESP32 reading a real card IS
-proven (2026-09-27, `C3621F39` / `314F6C0A` — see `firmware/door-reader/WIRING.md`).
+proven (2026-09-27, `C3621F39` / `314F6C0A` — see `firmware/door-reader/WIRING.md`). The Teams webhook against the
+real tenant IS proven (2026-10-01, END card in eRIGHT › General — see "Teams channel").
 There is no fire-panel integration: the roll call is started by a person (or a button a person
 presses), never by the alarm itself.
 
