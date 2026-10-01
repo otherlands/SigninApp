@@ -20,7 +20,7 @@ The original one-file JSON version is preserved in git history (`git show 6eab63
 | **Presence — Wi-Fi brace** | built + tested; **off** until `UNIFI_URL` + read-only `UNIFI_API_KEY` are in `/etc/eright-signin.env` | startup log: `presence: Wi-Fi brace off` |
 | **Presence — BLE brace** | server side live (`/api/presence/ble`); back-door firmware with the NimBLE scan **compiled, not yet flashed** (board off the lead); no tags bought yet; anchor ESP32 not yet built | `deploy/demo-presence.ps1` drove the full walked-in sequence locally 2026-09-27 |
 | Staff names, company, fire notice | **not yet entered** | Admin → PIN (from the install log) |
-| **Teams webhook** | **live** — URL set 2026-09-30, END card landed in eRIGHT › General 2026-10-01 | regenerate the URL (sig was pasted in chat), re-set in `/etc/eright-signin.env` |
+| **Teams webhook** | **live** — URL set 2026-09-30, END card landed in eRIGHT › General 2026-10-01; cards name who is on site / not accounted for | regenerate the URL (sig was pasted in chat), re-set in `/etc/eright-signin.env`. **Depends on the Proxmox box, LAN and fibre all being alive at the moment START/END is pressed** — see "What actually survives the fire today" |
 | **SharePoint copy** | built + tested against a fake; **tenant not yet configured** | `SP_*` lines |
 | **Prometheus / e-mail alerts** (llm-cluster) | rules + scrape job in repo; **deploy on platform-a owed** (`SIGNIN_ADDR=192.168.101.102 bash scripts/deploy-signin-monitoring.sh`) | platform-a reaches the server (`signin_up 1` read from it) |
 | **Back-door reader** (ESP32-S3 + PN532) | firmware flashed as `back-door-reader`; Wi-Fi + health 200 + **fire button proven** (roll call 09-25 22:58Z) + **cards read 09-27 20:34Z** (`C3621F39`, `314F6C0A` as unknown_card) — assign them in Admin | `firmware/door-reader/WIRING.md` |
@@ -366,6 +366,36 @@ through, and superseded snapshots are collapsed so a long outage does not replay
 6. **Every event carries who/what/when/where.** `kind, subject, at (UTC), source, device, note`. CSV export has all of them.
 7. **Retries are safe.** A device can resend the same `eventKey` and the person is not toggled back (tested).
 
+## What actually survives the fire today (honest, 2026-10-01)
+
+Rule 5 is the design; this is the as-built. The Teams "who's in" cards only exist if, **at the moment
+someone presses START/END**, every link in this chain is alive — and every link is inside the building:
+
+| Link | Where it physically is | Dies when |
+| --- | --- | --- |
+| Card tap → ESP32 / kiosk | back door / front door | Wi-Fi AP or PoE switch loses power |
+| ESP32 → server `:3000` | UniFi AP + switch → Proxmox `hpe` CT 106 | AP, switch, or Proxmox host off / on fire |
+| Register (SQLite) | CT 106 disk on the Proxmox host | Proxmox host off |
+| START/END pressed | kiosk, admin page, ESP32 button — all on the LAN | LAN down, or nobody can reach a device |
+| Server → Power Automate → Teams | Proxmox → switch → router → fibre | any of those off; Microsoft outage |
+
+So today the Teams card is an **evacuation convenience, not a life-safety control**. The register is
+correct up to the instant the box dies, then it is locked in the burning building. The fire-warden
+headcount at the assembly point stays the control of record until the off-site copies below are live.
+
+What closes the gap, cheapest first — none of it is done yet:
+
+| Fix | Effort | What it buys |
+| --- | --- | --- |
+| **UPS** on Proxmox + switch + AP + router | buy a UPS, plug in | minutes of grace: the box survives a breaker trip or the first minutes of a fire long enough for START to fire and the Teams card to leave. Does nothing if the rack itself is the fire. |
+| **SharePoint push** (`SP_*`, built, tenant not configured) | one Entra app reg, 6 env lines | the "last known register" lives in Microsoft's cloud, updated within 15 s of every tap, readable on every staff phone with **no action from anyone inside**. This is the real fix for rule 5. |
+| **`REPLICA=1` mirror on platform-a** (built, not deployed) | clone + one systemd unit | a second `/fire` with SAFE/MISSING ticks in a different room/failure domain, still on-site and still on the same LAN — helps for a plug-cycle, not for a building fire. |
+| **Teams heartbeat card** (not built) | small: `TEAMS_ROSTER_WEBHOOK_URL` + throttled "n on site: names" to a *second, quiet* channel on every roster change | Teams itself becomes the off-site copy for sites that will never set up SharePoint. Must not go to General or people mute it. |
+| 4G failover on the router | hardware + SIM | fibre cut or fibre in the fire zone |
+
+Order to do them: SharePoint first (it is built and costs nothing), UPS second, then decide if the
+heartbeat card is still wanted.
+
 ## Hardware (pick what you like — cheapest first)
 
 | Option | Cost class | Firmware? | Notes |
@@ -653,3 +683,4 @@ presses), never by the alarm itself.
 - Decided against: running the server on an ESP32 (a full C++ rewrite that would still be inside the building) and a fire-panel relay (no access to the panel).
 - Contractor inductions and photo badges are not built. Pre-registration is (v3.3) but has no e-mail/QR invite to the visitor yet.
 - The Teams card goes to one channel. Per-person push (e.g. SMS to a lone worker's own phone) is not built.
+- Nothing leaves the building until a human presses START/END, and the server, LAN and fibre must all be up at that moment. Until `SP_*` is configured there is **no automatic off-site copy** — see "What actually survives the fire today".
