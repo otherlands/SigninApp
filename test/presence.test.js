@@ -6,6 +6,9 @@ const { createApp } = require('../lib/app');
 
 const T0 = Date.parse('2026-09-28T07:55:00Z');
 const at = (min) => new Date(T0 + min * 60_000);
+// Presence reads the clock for HTTP-driven sightings and badges; tests move `clock.min` instead of letting today leak in.
+const clock = { min: 0 };
+const testNow = () => at(clock.min);
 
 /** Fake UniFi controller: returns whatever client list the test sets, requires the API key. */
 function fakeUnifi() {
@@ -20,7 +23,8 @@ function fakeUnifi() {
 }
 
 async function boot(options = {}) {
-    const app = createApp({ dataFile: ':memory:', adminPin: '', apiToken: 'tok', mirrorUrl: '', mirrorToken: '', teamsWebhookUrl: '', publicUrl: '', replica: false, sharepoint: {}, ...options });
+    clock.min = 0;
+    const app = createApp({ dataFile: ':memory:', adminPin: '', apiToken: 'tok', mirrorUrl: '', mirrorToken: '', teamsWebhookUrl: '', publicUrl: '', replica: false, sharepoint: {}, now: testNow, ...options });
     const server = http.createServer((req, res) => app.handle(req, res));
     await new Promise(r => server.listen(0, '127.0.0.1', r));
     const base = `http://127.0.0.1:${server.address().port}`;

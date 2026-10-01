@@ -84,14 +84,15 @@ test('card UID sign-in, unknown card is recorded, duplicate eventKey is idempote
         r = await call('PATCH', `/api/people/${other.id}`, { cardUid: '04A1B2C3' });
         assert.equal(r.status, 409, 'card cannot be assigned twice');
 
-        // USB-203 keyboard wedge types 10 decimal digits; the ESP32 posts hex — same card, one person.
-        r = await call('PATCH', `/api/people/${other.id}`, { cardUid: '3175933060' });
+        // USB-203 keyboard wedge types 10 decimal digits in reversed byte order; the ESP32/PN532 posts hex.
+        // Live proof 2026-10-01: wedge 0174870321 (0x0A6C4F31) is the fob the PN532 reads as 314F6C0A.
+        r = await call('PATCH', `/api/people/${other.id}`, { cardUid: '0174870321' });
         assert.equal(r.status, 200);
         assert.equal(r.json.people.find(p => p.id === other.id).hasCard, true);
-        r = await call('POST', '/api/sign', { cardUid: 'BD4CE484', source: 'card' }, { 'X-Api-Token': 'secret' });
-        assert.equal(r.status, 200, 'hex form of the decimal-enrolled card signs the same person in');
+        r = await call('POST', '/api/sign', { cardUid: '314F6C0A', source: 'card' }, { 'X-Api-Token': 'secret' });
+        assert.equal(r.status, 200, 'PN532 hex of the wedge-enrolled card signs the same person in');
         assert.equal(r.json.event.subjectId, other.id);
-        r = await call('POST', '/api/sign', { cardUid: '3175933060', source: 'card' }, { 'X-Api-Token': 'secret' });
+        r = await call('POST', '/api/sign', { cardUid: '0174870321', source: 'card' }, { 'X-Api-Token': 'secret' });
         assert.equal(r.json.event.kind, 'out', 'decimal form toggles the same person back out');
         r = await call('POST', '/api/sign', { cardUid: '12345678', source: 'card' }, { 'X-Api-Token': 'secret' });
         assert.equal(r.status, 404);
