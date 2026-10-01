@@ -117,7 +117,7 @@ delivers it — no 30 s scrape in the way. Three cards, and only three, so nobod
 | --- | --- |
 | START ROLL CALL pressed (any source: phone, wall button, ESP32) | red **🚨 FIRE ROLL CALL STARTED** — count on the register, started by, from where, "if you are OFF SITE stay away and phone in", button **Open the roll call** |
 | the tick that makes everyone SAFE (once per roll call) | green **✅ ALL n ACCOUNTED FOR** |
-| END ROLL CALL pressed | green **ROLL CALL ENDED — everyone accounted for**, or amber **⚠️ … n NOT ACCOUNTED FOR**, with safe/missing/not-seen and duration |
+| END ROLL CALL pressed | green **ROLL CALL ENDED — everyone accounted for**, or amber **⚠️ … n NOT ACCOUNTED FOR**, with safe/missing/not-seen and duration. Both the START and END cards list **names**: START = who is on the register; END = who is NOT accounted for (first) and who is safe, visitors tagged `(visitor, company)`. |
 
 **Setup (2 minutes, any channel owner):** in Teams open the channel → ⋯ → **Workflows** → search
 "Post to a channel when a webhook request is received" → name it, pick the team + channel → copy the HTTPS
@@ -441,7 +441,7 @@ not yet bought. The first Pi build is the evidence; expect to tune the rotation 
 | How Windows sees the USB-203 | "HID Keyboard Device", USB `16C0:27DB`, two HID collections, standard Microsoft HID driver, no vendor software |
 | Output for one MIFARE Classic-type card, 4 presentations | `3175933060` every time, followed by Enter (Enter confirmed — it submitted a text box) |
 | Second card | `1223519496` = `0x48ED6D08` — distinct from the first, also stable on repeat, so the reader tells cards apart and the server's one-card-one-person rule will hold |
-| Format | `3175933060` = `0xBD4CE484`, 32 bits → a 4-byte UID printed as 10 decimal digits, exactly what the label's 8H10D means |
+| Format | `3175933060` = `0xBD4CE484`, 32 bits → a 4-byte UID printed as 10 decimal digits, exactly what the label's 8H10D means. **Byte order is the reverse of the PN532's** (proven 2026-10-01: the wedge typed `0174870321` = `0x0A6C4F31` for the fob the ESP32 reads as `314F6C0A`). `normaliseUid` in `lib/store.js` turns any 10-digit UID into PN532 hex, and re-keys stored cards on start, so a card enrolled by typing from the USB-203 is the same card at the ESP32 door. |
 | Kiosk end-to-end with the physical reader | **Not yet done.** Only synthesised keydown events have been through the listener so far |
 | Inter-keystroke gap vs the listener's 120 ms rule | **Not yet measured** |
 | 7-byte-UID tags (NTAG213 stickers) on this reader | **Not yet tried.** Test that it types 10 stable digits and that two different stickers give different numbers before relying on it |

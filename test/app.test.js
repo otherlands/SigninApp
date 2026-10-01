@@ -359,6 +359,7 @@ test('Teams webhook: start / all-safe / end cards are posted in order, seconds a
         assert.equal(card.body[0].color, 'attention');
         assert.equal(card.actions[0].url, 'http://signin.example:3000/fire');
         assert.ok(card.body.some(b => b.type === 'FactSet' && b.facts.some(f => f.title === 'Started by' && f.value === 'Alan')));
+        assert.ok(card.body.some(b => b.type === 'FactSet' && b.facts.some(f => f.title === 'Who' && f.value === 'Only Person')), 'start card names who is on the register');
 
         r = await call('POST', '/api/fire/mark', { subjectType: 'staff', subjectId: p.id, status: 'safe', by: 'Alan' });
         assert.equal(r.json.rollcall.allSafe, true);
@@ -388,6 +389,9 @@ test('Teams webhook: start / all-safe / end cards are posted in order, seconds a
         assert.equal(app.store.outboxDepth(), 0);
         assert.match(posts[posts.length - 1].body.attachments[0].content.body[0].text, /ROLL CALL ENDED/);
         assert.equal(posts[posts.length - 1].body.attachments[0].content.body[0].color, 'good');
+        const endFacts = posts[posts.length - 1].body.attachments[0].content.body.find(b => b.type === 'FactSet').facts;
+        assert.ok(endFacts.some(f => f.title === 'Safe' && f.value === 'Only Person'), 'end card names the safe');
+        assert.ok(!endFacts.some(f => f.title === 'NOT accounted for'), 'no not-accounted row when everyone is safe');
     } finally { await close(); }
 });
 
