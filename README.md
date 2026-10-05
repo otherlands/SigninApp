@@ -336,7 +336,7 @@ through, and superseded snapshots are collapsed so a long outage does not replay
 | `roster.json` | The same data for anything that wants to read it programmatically. |
 | `events-YYYY-MM-DD.csv` | Today's full event log, rewritten on every change; yesterday's file stays as the archive. |
 
-**One-off setup (needs someone with Microsoft Entra admin rights on the eRIGHT tenant):**
+**One-off setup (needs someone with Microsoft Entra admin rights on the eRIGHT tenant)** — printable one-pager for the admin: [docs/entra-app-registration-sheet.md](docs/entra-app-registration-sheet.md).
 
 1. In Entra admin centre → App registrations → New registration. Name it e.g. `eRIGHT Sign-In Server`. No redirect URI. Note the **Application (client) ID** and **Directory (tenant) ID**.
 2. Certificates & secrets → New client secret. Copy the **value** immediately; it is shown once.
@@ -430,7 +430,7 @@ red roll-call banner, and as a card-reader fallback.
 | USB-203 card reader (already have) | — | fallback for people without the door reader / forgotten card |
 | Cat 6 Ethernet cable to the nearest PoE port | ~5–10 | measure the run |
 
-**Build (someone with a screwdriver; ~20 min + a 10-min script):**
+**Build (someone with a screwdriver; ~20 min + a 10-min script)** — tick-box bench card with the 30 Sep part-built state and the installer's expected output: [docs/pi-kiosk-bench-card.md](docs/pi-kiosk-bench-card.md).
 
 1. **Flash the SD** with Raspberry Pi Imager: *Raspberry Pi OS Lite (64-bit)*. In Imager's settings set hostname
    `door-kiosk`, a user + password, **enable SSH**, locale `Europe/London`. Wi-Fi is not needed — it will be wired.
