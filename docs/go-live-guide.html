@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>eRIGHT Sign-In v4.0 — Go-live guide for the administrator</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 20mm 16mm; }
+  html { font: 11pt/1.45 "Segoe UI", Arial, Helvetica, sans-serif; color: #111; }
+  body { max-width: 190mm; margin: 0 auto; padding: 0 8px; }
+  h1 { font-size: 22pt; margin: 0 0 4px; }
+  h2 { font-size: 15pt; margin: 28px 0 8px; padding-top: 10px; border-top: 2px solid #b00; page-break-before: always; }
+  h2.first { page-break-before: avoid; }
+  h3 { font-size: 12pt; margin: 18px 0 6px; }
+  p, li { orphans: 3; widows: 3; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 12px; font-size: 9.5pt; page-break-inside: auto; }
+  th, td { border: 1px solid #999; padding: 4px 6px; vertical-align: top; text-align: left; }
+  th { background: #eee; }
+  tr { page-break-inside: avoid; }
+  code, pre { font-family: Consolas, "Courier New", monospace; font-size: 9.5pt; }
+  code { background: #f3f3f3; padding: 0 3px; border-radius: 2px; }
+  pre { background: #f3f3f3; border: 1px solid #ddd; padding: 8px; white-space: pre-wrap; word-break: break-all; page-break-inside: avoid; }
+  .box { border: 1px solid #b00; background: #fff5f5; padding: 8px 10px; margin: 10px 0; page-break-inside: avoid; }
+  .note { border-left: 4px solid #777; background: #f6f6f6; padding: 6px 10px; margin: 10px 0; page-break-inside: avoid; }
+  .ok { color: #060; font-weight: bold; } .todo { color: #b00; font-weight: bold; } .opt { color: #555; }
+  .cover { page-break-after: always; }
+  .cover table { font-size: 10pt; }
+  ul.check li { list-style: none; margin: 4px 0; } ul.check li::before { content: "☐  "; }
+  small { color: #555; }
+  .muted { color: #555; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+<h1>eRIGHT Sign-In v4.0 — Go-live guide</h1>
+<p class="muted">For the administrator. Written 19 October 2026 against software commit <code>0a7829d</code>, which is what is running on the server. Each step says what to do, where, what you should see, and how to prove it worked.</p>
+
+<div class="box"><b>Nothing in this guide is assumed.</b> Every address, file path, command and current state below was read from the repository
+(<code>otherlands/SigninApp</code>), from the live server, or from DNS on 19 October 2026. Where a step happens in a vendor's console
+(GoDaddy, UniFi, Microsoft Entra, Teams) the guide tells you <i>which record or setting</i> is needed; exact menu names in those
+consoles were not checked and may differ from what is written here. If something does not match what you see, stop and say so.</div>
+
+<h3>What is already live</h3>
+<table>
+<tr><th>Piece</th><th>State on 19 Oct 2026</th></tr>
+<tr><td>Server</td><td><span class="ok">v4.0.0 live</span> on Proxmox CT 106 (<code>signin</code>, Ubuntu 24.04 LXC) at <code>http://192.168.101.102:3000</code>; service <code>eright-signin</code>; code in <code>/opt/eright-signin</code>; settings in <code>/etc/eright-signin.env</code> (root only). All health checks green.</td></tr>
+<tr><td>Register</td><td>8 active staff, 2 with cards. Company name and fire notice set. 12 roll calls recorded, none drills.</td></tr>
+<tr><td>Backups</td><td><span class="ok">on</span>: nightly 02:00 into <code>/opt/eright-signin/data/backups/</code>, 30 kept. Pre-upgrade copies in <code>/root/</code>.</td></tr>
+<tr><td>Teams cards</td><td><span class="ok">configured</span>; last post succeeded 1 Oct 2026. The README notes this webhook's URL was pasted into a chat on 30 Sep and should be regenerated (step 1).</td></tr>
+<tr><td>Retention</td><td><span class="ok">6 years</span> (<code>RETENTION_DAYS=2190</code>), first run touched nothing.</td></tr>
+<tr><td>Register assistant</td><td><span class="ok">on</span>, using fast-a (<code>192.168.102.120:11434</code>, model Qwen2.5-Coder-7B). Admin only.</td></tr>
+<tr><td>Public name / HTTPS</td><td><span class="todo">not live</span>: <code>signin.eright.co.uk</code> does not exist in public DNS; the office LAN DNS answers <code>192.168.101.168</code>, a host that does not exist. Caddy config is ready but not installed (step 6).</td></tr>
+<tr><td>SharePoint / Microsoft List</td><td><span class="todo">not configured</span>: all <code>SP_*</code> values empty except the folder name (step 7).</td></tr>
+<tr><td>Device tokens</td><td><span class="todo">none issued</span>; devices use the shared <code>API_TOKEN</code> (step 3).</td></tr>
+<tr><td>Back-door reader (ESP32)</td><td>Running v3.6 firmware (flashed 26 Sep). v4 firmware compiled, <span class="todo">not flashed</span> (step 4).</td></tr>
+<tr><td>Front-door kiosk (Pi)</td><td>Parts ordered 26 Sep; <span class="todo">not built</span> (step 5).</td></tr>
+<tr><td>Presence (phone / key-tag)</td><td><span class="opt">off</span>: no UniFi key, no tags, no anchor (step 8, optional).</td></tr>
+<tr><td>Monitoring on platform-a</td><td><span class="todo">deploy owed</span> (step 9).</td></tr>
+</table>
+
+<h3>Order of work</h3>
+<ol>
+<li>Regenerate the Teams webhook</li>
+<li>Staff, cards and phones</li>
+<li>Device tokens</li>
+<li>Flash the back-door reader</li>
+<li>Build the front-door kiosk</li>
+<li>Make <code>signin.eright.co.uk</code> real and switch on HTTPS</li>
+<li>Entra app registration → SharePoint files + Microsoft List</li>
+<li>Presence (optional)</li>
+<li>Monitoring on platform-a</li>
+<li>Run a drill</li>
+<li>Day-to-day operation</li>
+<li>Go-live checklist</li>
+</ol>
+<p class="muted">Steps 1–5 need nothing outside the building and can be done today. Step 6 needs the domain and the router. Step 7 needs a Microsoft 365 administrator. Step 10 is the proof.</p>
+
+<h3>Things you will need</h3>
+<ul>
+<li>SSH to the server as root: <code>ssh root@192.168.101.102</code> (key-based access already works from the development PC).</li>
+<li>The admin PIN: <code>grep ^ADMIN_PIN /etc/eright-signin.env</code> on the server. Never put it in a chat or e-mail.</li>
+<li>Access to: the Teams channel (owner), GoDaddy DNS for <code>eright.co.uk</code>, the UniFi controller, a Microsoft 365 Global/Application Administrator (step 7 only).</li>
+<li>For step 4: the development PC with PlatformIO, the ESP32 board and its CH343 UART lead.</li>
+</ul>
+</div>
+
+<!-- ============================================================ -->
+<h2 class="first">Step 1 — Regenerate the Teams webhook</h2>
+<p><b>Why:</b> the README records that the current webhook URL was pasted into a chat on 30 Sep 2026. Anyone with that URL can post into the channel. The cards work (last post 1 Oct), so this is hygiene, not repair.</p>
+<ol>
+<li>In Teams, open the channel that receives the roll-call cards → <b>⋯ → Workflows</b>. Find the flow named for the sign-in (it was created from <i>"Post to a channel when a webhook request is received"</i>), delete it, and create it again the same way. Copy the new HTTPS URL. <small>(If the ⋯ menu has no Workflows entry, the README section "Teams channel" describes the Power Automate template route and a known gotcha with its "For each" step.)</small></li>
+<li>On the server:
+<pre>ssh root@192.168.101.102
+nano /etc/eright-signin.env        # replace the value of TEAMS_WEBHOOK_URL=
+node /opt/eright-signin/server.js --check-config
+systemctl restart eright-signin</pre></li>
+<li><b>Prove it:</b> open <code>http://192.168.101.102:3000/fire</code> on a phone, press <b>Start a DRILL</b>, confirm. Within seconds a card headed <b>🟠 FIRE DRILL — ROLL CALL STARTED</b> appears in the channel with two buttons, <b>I'm SAFE</b> and <b>Open the roll call</b>. Press <b>END ROLL CALL</b>; a <b>DRILL ENDED</b> card follows. <code>Admin → Off-site copies</code> shows "Teams channel: ok".</li>
+</ol>
+
+<!-- ============================================================ -->
+<h2>Step 2 — Staff, cards and phones</h2>
+<h3>2a. Staff names</h3>
+<p>Open <code>http://192.168.101.102:3000/admin</code>, enter the PIN (you stay logged in for 12 hours on that browser). Under <b>Staff</b>, check the 8 names. Add any missing with the "New staff name" box. Remove leavers with <b>Remove</b> (history is kept; their card is freed).</p>
+<div class="note">Do not swipe a card while the cursor is in the "New staff name" box: the reader types the card number as a name. The server now refuses names that look like card numbers, but the swipe is still wasted.</div>
+
+<h3>2b. Assign cards (2 of 8 done)</h3>
+<p>Two ways; both end with the card's number in the person's <b>card UID</b> box.</p>
+<ol>
+<li><b>From a door tap:</b> tap the unassigned card on the back-door reader. The reader's LED flashes orange (unknown card). In Admin the line <b>Last unknown card seen</b> shows its number; press <b>copy</b>, click into the right person's card box, paste, press Enter. Tap the card again: green flash, kiosk shows them signed in.</li>
+<li><b>From a USB reader on the admin PC:</b> click into the person's card box and present the card; the USB-203 types the number and Enter. The server converts the 10-digit form to the same hex the door reader uses, so one card is one person at both doors.</li>
+</ol>
+<p>To remove a card, type <code>CLEAR</code> in the box and press Enter.</p>
+
+<h3>2c. Phones</h3>
+<p>Every member of staff, on their phone, on the office Wi-Fi:</p>
+<ul>
+<li>Open <code>http://192.168.101.102:3000/fire</code> and add it to the home screen ("Add to Home Screen" in the browser's share/menu). This is the roll-call page; there is no designated marshal, so everyone has it.</li>
+<li>Open <code>http://192.168.101.102:3000/safe</code>, choose their own name once (remembered on that phone), and add it to the home screen too. This is the one-press <b>I'm SAFE</b> page; the Teams card's first button opens the same page.</li>
+</ul>
+<div class="note">Until step 6 is done these addresses only work on the office Wi-Fi. On mobile data the pages say "server unreachable" and tell the person to report to whoever is running the roll call in person. That is the honest state today.</div>
+<p>Print a QR code to <code>http://192.168.101.102:3000/fire</code> for the assembly-point sign (after step 6, reprint it with the https name).</p>
+
+<!-- ============================================================ -->
+<h2>Step 3 — Device tokens</h2>
+<p><b>Why:</b> today every device shares one <code>API_TOKEN</code>. With per-device tokens a lost or stolen reader can be cut off alone, each device has only the permissions it needs, and the log names the device from its token rather than from what it claims.</p>
+<p>In Admin → <b>Devices &amp; tokens</b>, or on the server with <code>signinctl</code>:</p>
+<pre>cd /opt/eright-signin
+node bin/signinctl.js token back-door-reader sign,fire      # the ESP32: card taps + the fire button
+node bin/signinctl.js token door-kiosk sign                 # the Pi kiosk's USB card reader
+node bin/signinctl.js token front-door-scanner presence     # only if the Pi runs the BLE scanner (step 8)</pre>
+<p>Each token is printed <b>once</b>. Put it straight into the device it is for (steps 4 and 5). Keep a note of which device has which name; never store the token itself anywhere else.</p>
+<p>The shared <code>API_TOKEN</code> keeps working alongside. Once every device has its own token you may blank <code>API_TOKEN=</code> in the env file and restart — but only then, or the devices still using it stop being accepted.</p>
+<p><b>Prove it:</b> Admin → Devices shows the device with "never used" until its first request, then "last used …". <code>Admin → Log</code> shows <code>device token issued</code>.</p>
+
+<!-- ============================================================ -->
+<h2>Step 4 — Flash the back-door reader</h2>
+<p><b>Board:</b> ESP32-S3 DevKitC-class, device name <code>back-door-reader</code>, currently on v3.6 firmware (flashed 26 Sep; cards proven 27 Sep). The v4 firmware adds: fire button retries until the server confirms (LED blinks red until then); card taps made while the server is unreachable are kept — through a power cut — and sent later; a tap restored after a power cut is recorded as "card tapped while reader was offline" and never changes the register (a lost tap over-counts, which is the safe failure).</p>
+<ol>
+<li>Plug the board into the development PC with the <b>CH343 UART lead</b> (last time it appeared as <code>COM42</code>; check Device Manager → Ports for the current number).</li>
+<li>On the PC:
+<pre>cd "D:\eRIGHT\APPS\Access Lgging\V1\firmware\door-reader"
+notepad include\config.h      # set API_TOKEN to the back-door-reader token from step 3 (keep WIFI_*, SERVER_URL, DEVICE_NAME as they are)
+& "$env:USERPROFILE\.platformio\penv\Scripts\pio.exe" run -t upload --upload-port COM42
+python tools\listen_door_reader.py COM42 40</pre>
+<code>config.h</code> is git-ignored and already holds the Wi-Fi name, password and server address.</li>
+<li><b>What a healthy boot prints</b> within 30 s: <code>[wifi] connecting to IOT</code> → <code>[server] http://192.168.101.102:3000/api/health -> 200</code> → <code>[nfc] PN5xx firmware … ready</code> → a <code>[status]</code> line every 30 s with <code>nfc=ready</code>.</li>
+<li><b>LEDs</b> (built-in RGB):
+<table>
+<tr><th>LED</th><th>Meaning</th></tr>
+<tr><td>purple</td><td>connecting to Wi-Fi / Wi-Fi lost</td></tr>
+<tr><td>dim blue</td><td>ready, waiting for a card</td></tr>
+<tr><td>green flash</td><td>card accepted: person signed in or out</td></tr>
+<tr><td>orange flash</td><td>card not confirmed: unknown card or wrong token (refused), or server unreachable (tap <b>kept</b>, sent when the server answers)</td></tr>
+<tr><td>red 3 s</td><td>roll call started from the button and <b>confirmed by the server</b></td></tr>
+<tr><td>red blinking</td><td>button held, server not yet confirmed; retries every 3 s for up to 15 min. <b>Start the roll call from a phone as well.</b></td></tr>
+<tr><td>orange steady at boot</td><td>PN532 not found: see <code>firmware/door-reader/WIRING.md</code> step 6</td></tr>
+</table></li>
+<li><b>Prove it:</b> (a) tap an assigned card → green flash, kiosk changes; (b) hold the button 2 s → red, <code>/fire</code> shows a roll call "by door button", end it from a phone; (c) in Admin → Log the events show device <code>back-door-reader</code>.</li>
+<li>Fit it back on the wall (mounting and the fire-button label are in <code>WIRING.md</code>, "Mounting").</li>
+</ol>
+
+<!-- ============================================================ -->
+<h2>Step 5 — Build the front-door kiosk (Raspberry Pi)</h2>
+<p>Parts were ordered from The Pi Hut on 26 Sep 2026 (Pi 5 2 GB, Argon Industria HMI 10CS display + enclosure, Argon PoE+ HAT, THRML cooler, 32 GB SD). The build is written up in the README section <b>"Door kiosk — Raspberry Pi build"</b> and the tick-box bench card <code>docs/pi-kiosk-bench-card.md</code>. In short:</p>
+<ol>
+<li>Flash the SD with Raspberry Pi Imager: <b>Raspberry Pi OS Lite (64-bit)</b>, hostname <code>door-kiosk</code>, a user, <b>SSH enabled</b>, locale Europe/London.</li>
+<li>Assemble: THRML cooler on the Pi (leave the case's passive column out), PoE+ HAT on the header, screen power lead to the HAT's 5 V header, screen ribbon to the DSI port, close the enclosure.</li>
+<li>One Ethernet cable from a PoE port on the Corporate network. Give <code>door-kiosk</code> a DHCP reservation in UniFi.</li>
+<li>From a PC: <code>ssh &lt;user&gt;@door-kiosk.local</code>, then
+<pre>git clone https://github.com/otherlands/SigninApp.git ~/SigninApp
+sudo KIOSK_URL=http://192.168.101.102:3000 KIOSK_CARD_TOKEN='&lt;door-kiosk token from step 3&gt;' bash ~/SigninApp/deploy/kiosk-pi/install.sh
+sudo reboot</pre>
+After the reboot the screen shows the sign-in page full-screen and never blanks.</li>
+<li>Plug the USB-203 card reader into the Pi. Present an unassigned card: the page says "Card … is not assigned to anyone" and Admin shows it under <b>Last unknown card seen</b>. That one scan proves reader → page → token → server.</li>
+</ol>
+<div class="note">None of the kiosk build has run on real hardware yet — the parts had not arrived when the installer was written. Expect to adjust the screen-rotation setting and possibly the Chromium package name; the bench card lists what to check. After step 6, re-run the installer with <code>KIOSK_URL=https://signin.eright.co.uk</code>.</div>
+
+<!-- ============================================================ -->
+<h2>Step 6 — Make <code>signin.eright.co.uk</code> real and switch on HTTPS</h2>
+<p><b>Why:</b> three things need it. (1) Staff phones on mobile data can reach <code>/fire</code> and <code>/safe</code> at the assembly point. (2) The fire page's <b>offline copy</b> (it opens and shows the last register even with the server dead) only works over HTTPS. (3) The admin login cookie is sent encrypted.</p>
+<p><b>Facts checked on 19 Oct 2026:</b> <code>signin.eright.co.uk</code> has no public DNS record; <code>eright.co.uk</code>'s nameservers are GoDaddy's (<code>ns13</code>/<code>ns14.domaincontrol.com</code>); inside the office the UniFi gateway (192.168.101.1) answers <code>192.168.101.168</code> for that name and nothing exists at .168; the office's public address was <code>46.37.62.121</code>; nothing listens on ports 80/443 on the server.</p>
+
+<div class="box"><b>Decide this first.</b> Once the name points at the server from the internet, <code>/fire</code> (no login: names of who is on site, start/tick/end a roll call) and <code>/safe</code> are reachable by anyone who finds the address, not just staff. The admin page is PIN-protected with lockout; the register is not. Options: accept it (the pages hold names and times only); or restrict in Caddy by IP or basic auth; or reach the server through a VPN instead and skip the public record. The guide continues with the public route because that is what was asked for, but it is your call.</div>
+
+<h3>6a. Public DNS (GoDaddy)</h3>
+<p>In GoDaddy's DNS management for <code>eright.co.uk</code>, add an <b>A record</b>: name <code>signin</code>, value the office's public IPv4 address (<code>46.37.62.121</code> as seen on 19 Oct — confirm it is static with the ISP; if it can change you need dynamic DNS or the DNS-01 variant in <code>deploy/Caddyfile</code>), TTL short (e.g. 600). Wait until <code>nslookup signin.eright.co.uk</code> from a phone on mobile data returns that address.</p>
+
+<h3>6b. Port forwarding (UniFi)</h3>
+<p>On the UniFi gateway, forward <b>TCP 80 and TCP 443</b> from the WAN to <code>192.168.101.102</code>. Port 80 is needed for the certificate challenge and for redirecting http to https; 443 is the site.</p>
+
+<h3>6c. LAN DNS (UniFi)</h3>
+<p>Change the local DNS record for <code>signin.eright.co.uk</code> from <code>192.168.101.168</code> to <code>192.168.101.102</code> so phones on the office Wi-Fi reach the server directly by name. Check from the server: <code>getent hosts signin.eright.co.uk</code> must print <code>192.168.101.102</code>.</p>
+
+<h3>6d. Caddy on the server</h3>
+<pre>ssh root@192.168.101.102
+cd /opt/eright-signin && git pull --ff-only
+sudo bash deploy/install-caddy.sh</pre>
+<p>The script installs Caddy, puts <code>deploy/Caddyfile</code> in place (it names <code>signin.eright.co.uk</code> and proxies to the app on :3000), validates it and starts it. Caddy obtains the certificate itself over port 80. If it prints <code>000</code> for the https check, the name or the forward is not right yet: <code>journalctl -u caddy -n 30</code> says which.</p>
+
+<h3>6e. Tell the app its public address</h3>
+<pre>nano /etc/eright-signin.env        # PUBLIC_URL=https://signin.eright.co.uk
+node /opt/eright-signin/server.js --check-config
+systemctl restart eright-signin</pre>
+<p>From now on the Teams cards' buttons point at the https name. The plain <code>http://192.168.101.102:3000</code> keeps working for the kiosk and the printed QR codes.</p>
+
+<h3>6f. Prove it</h3>
+<ul>
+<li>On a phone <b>with Wi-Fi off</b>: <code>https://signin.eright.co.uk/fire</code> loads with a padlock; below the buttons it says <b>offline copy: ready</b>.</li>
+<li>Turn the phone to flight mode, reopen the page from the home screen: it still opens and shows "SERVER UNREACHABLE — showing the last register this device saw…".</li>
+<li><code>https://signin.eright.co.uk/safe</code> shows your name and, when a roll call is running, the I'M SAFE button.</li>
+<li>Re-add <code>/fire</code> and <code>/safe</code> to home screens with the new address; reprint the assembly-point QR code.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2>Step 7 — Entra app registration → SharePoint files + Microsoft List</h2>
+<p><b>Why:</b> with the building dark, the only copies of the register that survive are the ones already in Microsoft's cloud. The server pushes three files (<code>who-is-on-site.txt</code>, <code>roster.json</code>, <code>events-&lt;day&gt;.csv</code>) into a SharePoint folder within 15 s of every change, and (new in v4) keeps a <b>Microsoft List</b> with one row per person on site plus a status row, which staff can open — and edit — in the Teams or SharePoint app on their phones. Until this is done, <b>nothing leaves the building automatically</b>.</p>
+<p>The full one-page sheet for the Microsoft 365 administrator is <code>docs/entra-app-registration-sheet.md</code>; it explains each permission and the exact Graph calls the server makes. Summary:</p>
+<ol>
+<li><b>Register the app</b> in the Entra admin centre: App registrations → New registration. Name <code>eRIGHT Sign-In Server</code>, this organisational directory only, no redirect URI. Copy the <b>Directory (tenant) ID</b> and <b>Application (client) ID</b>.</li>
+<li><b>Create a client secret</b> (Certificates &amp; secrets → New client secret, 24 months). Copy the <b>Value</b> immediately; it is shown once. Put the expiry date in the diary. Type it only into the env file on the server — never into a chat.</li>
+<li><b>Permissions</b>: API permissions → Microsoft Graph → Application permissions → <code>Sites.Selected</code> (preferred; the app can touch nothing until step 4 grants one site). Grant admin consent.</li>
+<li><b>Grant the app write on the one site</b> via Graph Explorer (the sheet gives the two requests: GET the site id, then POST <code>/sites/&lt;id&gt;/permissions</code> with <code>roles: ["write"]</code> for the app). A <code>201 Created</code> is the proof. The List needs the same write permission as the files; no extra permission.</li>
+<li>In that site's Documents library create the folder <code>eRIGHT Ltd/Sign-in</code>.</li>
+<li>On the server:
+<pre>nano /etc/eright-signin.env
+  SP_TENANT_ID=&lt;Directory (tenant) ID&gt;
+  SP_CLIENT_ID=&lt;Application (client) ID&gt;
+  SP_CLIENT_SECRET=&lt;secret Value&gt;
+  SP_SITE=eright.sharepoint.com:/sites/&lt;SiteName&gt;
+  SP_DRIVE=                      (blank = the site's default Documents library)
+  SP_FOLDER=eRIGHT Ltd/Sign-in   (already set)
+  SP_LIST=Sign-in register       (the List is created on first sync if it does not exist)
+node /opt/eright-signin/server.js --check-config
+systemctl restart eright-signin</pre></li>
+</ol>
+<p><b>Prove it:</b> sign someone in on the kiosk. Within 15 s, <b>Admin → Off-site copies</b> shows "SharePoint → … ok … (3 files)" and "Microsoft List "Sign-in register": ok (n rows)". On a phone, open the SharePoint folder and the List in the Teams app; put shortcuts to both on every staff phone. If it fails, the error text in Admin names the step: the sheet's last table maps each message to the step to redo.</p>
+<div class="note">The Microsoft List code has been exercised only against a simulated Graph service, not against the real tenant: the app registration did not exist when it was written. The first real sync is the test. Report the exact error text if it fails.</div>
+
+<!-- ============================================================ -->
+<h2>Step 8 — Presence: phone and key-tag signals (optional)</h2>
+<p>Signs people <b>in</b> automatically when their phone joins the office Wi-Fi or their key tag is heard inside; may sign <b>out</b> only someone it signed in itself, and only when both signals agree and the tag walked out past a door; never overrules a tap. Everything else it only <i>shows</i> ("probably left"). The engine is tested with simulated controllers and scanners; it has <b>not</b> been run against the real UniFi controller or real tags.</p>
+<h3>8a. Phone signal (UniFi)</h3>
+<ol>
+<li>In the UniFi controller create a <b>read-only API key</b>.</li>
+<li>Env file: <code>UNIFI_URL=https://&lt;controller address&gt;</code>, <code>UNIFI_API_KEY=&lt;key&gt;</code>, optionally <code>UNIFI_SSID=&lt;office network name&gt;</code>. <code>--check-config</code>, restart.</li>
+<li>Staff set their phone's Wi-Fi "Private Address" for the office network to <b>Fixed</b> (not rotating), or the phone looks new every day.</li>
+<li>Admin → <b>Presence — phones &amp; key tags</b>: phones seen on the Wi-Fi in the last 10 minutes appear in a picker; assign each to its owner.</li>
+</ol>
+<h3>8b. Key-tag signal</h3>
+<p>Needs iBeacon-class tags on key rings, the back-door reader (already scans), an inside "anchor" ESP32 (same firmware, <code>SCANNER_ROLE "anchor"</code>, <code>HAS_PN532 0</code>), and optionally the Pi running <code>deploy/kiosk-pi/ble-scanner.py</code> with a <code>presence</code>-scoped token. Tags heard appear in the same Admin picker. None of this hardware has been bought yet.</p>
+<p><b>Prove it:</b> <code>signin_wifi_last_poll_ok 1</code> on <code>/metrics</code>; a staff member whose phone is enrolled shows 📱 on the kiosk when in.</p>
+
+<!-- ============================================================ -->
+<h2>Step 9 — Monitoring on platform-a</h2>
+<p>The estate's Prometheus/Alertmanager on platform-a (<code>192.168.102.100</code>) e-mails the team when a roll call starts, when someone is lone-working out of hours, when the server is down and when the off-site copy is failing. The rules and scrape job live in the <code>llm-cluster</code> repository; deployment to platform-a is still owed. From your PC:</p>
+<pre>ssh -t aiadmin@192.168.102.100 "cd ~/llm-cluster && git pull --ff-only && SIGNIN_ADDR=192.168.101.102 bash scripts/deploy-signin-monitoring.sh 2>&1 | tee ~/deploy-signin-monitoring.log"</pre>
+<p>Give CT 106 a <b>DHCP reservation</b> in UniFi first so <code>192.168.101.102</code> never moves.</p>
+<p>v4 added series worth alerting on: <code>signin_check_ok{check}</code> (0 = a health check failing), <code>signin_backup_age_seconds</code>, <code>signin_job_failures{job}</code>, <code>signin_rollcall_drill</code>. Adding rules for them is a change in the llm-cluster repo, not here.</p>
+<p><b>Prove it:</b> run the step-10 drill again; the Alerts@ e-mail must arrive as well as the Teams card.</p>
+
+<!-- ============================================================ -->
+<h2>Step 10 — Run a drill</h2>
+<p>This is the proof that the whole chain works, and it leaves a record (time to all-accounted) for the fire risk assessment.</p>
+<ol>
+<li>Pick a quiet time. Make sure at least three people are signed in (kiosk or cards).</li>
+<li>On a phone, <code>/fire</code> → <b>Start a DRILL</b> → confirm. (Or on the server: <code>node bin/signinctl.js drill "your name"</code>.)</li>
+<li>Watch: the Teams card arrives (🟠 FIRE DRILL — ROLL CALL STARTED) listing who is on the register; the kiosk shows the red banner; every open <code>/fire</code> page switches to the roll call within a second.</li>
+<li>Ask two people to press <b>I'm SAFE</b> on the Teams card (or their <code>/safe</code> shortcut). The roll-call page shows them ✔ SAFE "by &lt;name&gt; (self)" and the Safe counter says "(2 by phone)".</li>
+<li>Tick the rest SAFE on the roll-call page with your name in the "Your name (marshal)" box. When the last one is ticked the page turns green, ALL n ACCOUNTED FOR, and a green card posts to Teams.</li>
+<li>Press <b>END ROLL CALL</b>. The DRILL ENDED card gives the duration and "All accounted for after n min".</li>
+<li>Admin → <b>Roll-call history</b>: the row says <i>drill</i>, shows self-marks and the time to all-accounted. Keep that for the fire log.</li>
+</ol>
+<p>Repeat the drill after step 6 with phones on mobile data, and after step 7 to see the SharePoint files and the List change during it.</p>
+
+<!-- ============================================================ -->
+<h2>Step 11 — Day-to-day operation</h2>
+<h3>Daily glance</h3>
+<p>Admin → <b>Off-site copies</b> shows the SharePoint, List, Teams, backup, retention and TLS state. For every health check and job, on the server:</p>
+<pre>cd /opt/eright-signin
+node bin/signinctl.js status          # version, every check, every job, backup age, warnings</pre>
+<p>Anything other than <code>status: OK</code> names the failing check and why.</p>
+
+<h3>Forgotten sign-outs</h3>
+<p>Staff or visitors signed in before midnight show ⚠ on the kiosk and roll-call page and under Admin → <b>Forgotten sign-outs</b>. Close them there. "Close all" skips anyone whose phone or tag says they are inside right now.</p>
+
+<h3>Backups and restore</h3>
+<p>Nightly at 02:00 into <code>/opt/eright-signin/data/backups/</code> (30 kept; also copied to SharePoint once step 7 is done). To check a backup, or to restore one:</p>
+<pre>node bin/signinctl.js verify /opt/eright-signin/data/backups/&lt;file&gt;.sqlite     # integrity, schema, counts
+node bin/signinctl.js restore /opt/eright-signin/data/backups/&lt;file&gt;.sqlite --yes
+# stops the service, copies the file in beside the live one, swaps only when the copy succeeded, restarts, prints status.
+# The replaced register is kept as signin.sqlite.replaced-&lt;time&gt;.</pre>
+<p>Do one restore drill on a quiet day so the procedure is known before it is needed.</p>
+
+<h3>Upgrading</h3>
+<pre>bash /opt/eright-signin/deploy/upgrade-ct106.sh
+# backs the register up to /root first, pulls, runs all tests, keeps the env file, restarts, prints health before and after</pre>
+<p>Before editing the env file, and after: <code>node server.js --check-config</code>. The server refuses to start on a bad value and says which.</p>
+
+<h3>Other commands</h3>
+<table>
+<tr><th>Command</th><th>Does</th></tr>
+<tr><td><code>node bin/signinctl.js people</code></td><td>staff list: card/phone/tag, in or out</td></tr>
+<tr><td><code>node bin/signinctl.js token &lt;name&gt; &lt;scopes&gt;</code> / <code>revoke &lt;name&gt;</code></td><td>device tokens (step 3)</td></tr>
+<tr><td><code>node bin/signinctl.js ask "…"</code></td><td>ask the register (also in Admin → Ask the register)</td></tr>
+<tr><td><code>node bin/signinctl.js rebuild-projections</code></td><td>refold "who is in" from the event log; reports whether anything differed (it should not)</td></tr>
+<tr><td><code>journalctl -u eright-signin -n 50 --no-pager</code></td><td>server log</td></tr>
+<tr><td><code>curl -s localhost:3000/metrics | grep signin_</code></td><td>everything Prometheus sees</td></tr>
+</table>
+
+<h3>Records to keep</h3>
+<ul>
+<li>Where the admin PIN and the device-token names are written down (not the tokens).</li>
+<li>The client-secret expiry date from step 7 (24 months) — the SharePoint copy stops silently when it expires; Admin will show <code>AADSTS7000215</code>.</li>
+<li>Drill dates and times to all-accounted (Admin → Roll-call history).</li>
+<li>Retention decision: 6 years for visitor details, events and roll calls (presence sightings 14 days). Recorded in the README; change <code>RETENTION_DAYS</code> if the policy changes.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2>Step 12 — Go-live checklist</h2>
+<ul class="check">
+<li>Teams webhook regenerated; drill card received (step 1)</li>
+<li>All staff named in Admin; every card assigned; leavers removed (step 2)</li>
+<li>Every staff phone has <code>/fire</code> and <code>/safe</code> on the home screen; assembly-point QR printed (step 2)</li>
+<li>Device tokens issued for the reader and the kiosk; shared API_TOKEN blanked afterwards (step 3)</li>
+<li>Back-door reader on v4 firmware; card green, button red, both visible in Admin → Log (step 4)</li>
+<li>Front-door kiosk built, on the wall, card reader proven (step 5)</li>
+<li><code>signin.eright.co.uk</code> resolves publicly and on the LAN to the server; https padlock; <code>PUBLIC_URL</code> updated; "offline copy: ready" on a phone (step 6)</li>
+<li>Exposure decision for <code>/fire</code> on the internet taken and recorded (step 6)</li>
+<li>SharePoint files and Microsoft List updating within 15 s; shortcuts on phones; secret expiry in the diary (step 7)</li>
+<li>Presence configured, or consciously left off (step 8)</li>
+<li>Monitoring deployed on platform-a; alert e-mail received during a drill (step 9)</li>
+<li>A full drill done with phones on mobile data and recorded in Roll-call history (step 10)</li>
+<li>One restore drill done from a backup (step 11)</li>
+<li>CT 106 has a DHCP reservation; a UPS covers the Proxmox host, switch, access point and router (README, "What actually survives the fire today")</li>
+</ul>
+
+<h3>Still true after all of this</h3>
+<p>The register is correct up to the instant the server, its switch or its power goes; from then on the SharePoint files and the Microsoft List are the record, readable on any phone. Self-marking and the roll-call page keep working only while the server can be reached (LAN, or the internet via step 6). Ticking people off <i>in the List itself</i> when the server is gone is the next step after step 7 and is not built yet. The fire-warden headcount at the assembly point remains the control of record.</p>
+
+<p class="muted" style="margin-top:30px">Source of truth for everything above: the repository README ("v4.0", "Install on Ubuntu", "Teams channel", "SharePoint off-site copy", "Door kiosk", "ESP32 door reader"), <code>docs/entra-app-registration-sheet.md</code>, <code>docs/pi-kiosk-bench-card.md</code>, <code>deploy/*.sh</code>, <code>deploy/Caddyfile</code>, and the live server on 19 October 2026.</p>
+</body>
+</html>
