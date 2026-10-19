@@ -122,6 +122,18 @@ decision is in `docs/go-live-guide.html` (and its PDF), marked as yours.
 backup, restore drill, heartbeat, assistant and presence; per-person **History**; **Give last tapped card** (no
 copy/paste). Kiosk: **name search** (a card swiped into the box is still treated as a card).
 
+**Windows desktop reminder** (`deploy/desktop/signin-check.ps1`, Windows PowerShell 5.1, no install or admin rights):
+runs at Windows log on and at unlock. If the PC is on the office network (the subnet it was set up on, or
+`-OfficeSubnets`) and the server answers, it checks whether *this person* is signed in; if not it asks **Yes** (sign
+me in: `source desktop`, device `pc-<computername>`), **No** (not in the office today: no more reminders today) or
+**Cancel** (ask next time). It never signs anyone in without the person's Yes and never signs anyone out; a desktop
+sign-in is a deliberate act, so presence never undoes it. Setup: `powershell -ExecutionPolicy Bypass -File
+signin-check.ps1 -Setup` on the PC, in the office (pick your name); `-Uninstall` removes it; `-Check` prints the
+state without a window. Proven on this development PC on 2026-10-20 against the live server (task registered with
+log-on + unlock triggers, `-Check` correctly reported "not signed in", then removed) and by `test/desktop.test.js`
+with real PowerShell 5.1 against a test server (Yes/No/off-network/already-in). The dialog box itself was not
+clicked in a test. Server side: `desktop` joined the no-token human sources (refused from untrusted networks like the
+others). A VPN that hands out an office address would look like "in the office": the person answers No.
 **Door reader firmware**: every HTTP call (taps, fire start, BLE batches, health check, heartbeat) runs in one FreeRTOS
 task on core 0; `loop()` only reads the button and the PN532 and drives the LED, so a dead server can no longer make
 the button or the reader unresponsive. Queued taps drain at full speed; orange means "not delivered yet" at once (no
@@ -131,7 +143,7 @@ RAM 15.6 %, flash 29.9 %); **not flashed** (no ESP32 on a serial port of this PC
 **Repository**: `main` is protected against force-push and deletion (enforced for admins; no required checks).
 `package.json` is `eright-signin` 4.1.0. CI adds a browser end-to-end job and builds both firmware variants.
 
-**Tests**: 69 (`test/v41.test.js` adds 13: marks as events + rebuild, transactions, assembly view, SSE caps, trusted
+**Tests**: 70 (`test/desktop.test.js` drives the desktop reminder on Windows; `test/v41.test.js` adds 13: marks as events + rebuild, transactions, assembly view, SSE caps, trusted
 nets, off-box push and its failure, restore drill incl. a corrupt file, heartbeat + silent device + ops alerts, chaser,
 List ticks incl. leftover and 412 cases, LLM down, presence off, and the review regressions). **Browser end-to-end**
 (`npm run e2e`, headless Chrome/Edge over the DevTools protocol, no packages): kiosk search + tap; marshal tick;

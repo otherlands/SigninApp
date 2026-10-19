@@ -75,3 +75,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: for f in deploy/*.sh deploy/kiosk-pi/install.sh; do bash -n "$f"; done
+      # The Windows desktop reminder: parse with PowerShell (pwsh ships on ubuntu runners). It runs for real in
+      # test/desktop.test.js on Windows.
+      - name: desktop reminder parses
+        shell: pwsh
+        run: |
+          $e = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile("$PWD/deploy/desktop/signin-check.ps1", [ref]$null, [ref]$e)
+          if ($e) { $e | ForEach-Object { $_.Message }; exit 1 }
+          if ([IO.File]::ReadAllBytes("$PWD/deploy/desktop/signin-check.ps1") | Where-Object { $_ -gt 127 }) { 'non-ASCII byte: Windows PowerShell 5.1 would misread it'; exit 1 }

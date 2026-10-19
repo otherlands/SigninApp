@@ -348,6 +348,17 @@ node bin/signinctl.js restore /opt/eright-signin/data/backups/&lt;file&gt;.sqlit
 # with its new version number within 30 s, the previous code AND the pre-upgrade database go back automatically.</pre>
 <p>Before editing the env file, and after: <code>node server.js --check-config</code>. The server refuses to start on a bad value and says which.</p>
 
+<h3>Desktop reminder on office PCs (v4.1, optional)</h3>
+<p>A small script for each person's Windows PC: at log on and when the PC is unlocked, if the PC is on the office network and the person is <b>not</b> signed in, it asks <b>"Sign in now?"</b> — <b>Yes</b> signs them in (the log shows <code>desktop</code> and the PC's name), <b>No</b> means "not in the office today" (no more reminders that day), <b>Cancel</b> asks again next time. It never signs anyone in without their Yes and never signs anyone out. No installation or admin rights; it uses the PowerShell built into Windows 10/11.</p>
+<ol>
+<li>On the person's PC, <b>while it is in the office on the office network</b>, copy <code>deploy\desktop\signin-check.ps1</code> from the repository (or a USB stick) anywhere, e.g. the Desktop.</li>
+<li>Right-click the Start button → <b>Terminal</b> (or Windows PowerShell), then:
+<pre>powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\Desktop\signin-check.ps1" -Setup</pre>
+A list of names appears: the person picks <b>their own</b>. A box confirms "Set up for &lt;name&gt;" and the network it will treat as the office (the one the PC is on now). The script copies itself to <code>%LOCALAPPDATA%\eRIGHT\</code>; the copy on the Desktop can be deleted.</li>
+<li><b>Prove it:</b> sign the person out at the kiosk, lock the PC (Windows key + L) and unlock it: within a few seconds the question appears. Press <b>Yes</b>: the kiosk shows them signed in; Admin → Log shows <code>signed in · desktop · pc-&lt;pcname&gt;</code>.</li>
+<li>To check without a window: <code>powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\eRIGHT\signin-check.ps1" -Check</code>. To remove: the same with <code>-Uninstall</code>. Its log: <code>%LOCALAPPDATA%\eRIGHT\signin-check.log</code>.</li>
+</ol>
+<div class="note">Laptops: if the office network can also be reached over a VPN with an office address, the reminder will ask at home too — the person presses <b>No</b>. If <code>TRUSTED_NETS</code> is set (step 6g), include the PCs' network in it, or the sign-in is refused. It reminds about signing <i>in</i> only: signing out on leaving is still the kiosk or the card.</div>
 <h3>Other commands</h3>
 <table>
 <tr><th>Command</th><th>Does</th></tr>
@@ -385,6 +396,7 @@ node bin/signinctl.js restore /opt/eright-signin/data/backups/&lt;file&gt;.sqlit
 <li>Ops webhook set (step 1b); outside heartbeat chosen and set (step 9b)</li>
 <li><code>TRUSTED_NETS</code> set (step 6g); <code>DRIFT_HOSTNAME</code> set after the name works (step 6f); <code>EXPECT_DEVICES</code> set after the reader is reflashed (step 4); <code>SP_SECRET_EXPIRES</code> set (step 7)</li>
 <li>An iPhone and an Android home-screen "I'm SAFE" icon proven in a drill (step 2c)</li>
+<li>Desktop reminder set up on staff PCs, or consciously not used (step 11)</li>
 <li>Repository made private (cover page, "Repository")</li>
 <li>CT 106 has a DHCP reservation; a UPS covers the Proxmox host, switch, access point and router (README, "What actually survives the fire today")</li>
 </ul>
