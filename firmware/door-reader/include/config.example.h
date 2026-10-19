@@ -15,7 +15,8 @@
 // (defaults: front-door,back-door / anchor). Roles: "door" (has PN532 + button) or "anchor" (inside, BLE only).
 #define SCANNER_NAME "back-door"
 #define SCANNER_ROLE "door"
-#define BLE_SCAN 1 // 0 to build the plain card reader without BLE
+// v4.1: OFF by default. Presence is off on the server unless PRESENCE=on; the plain card reader needs no BLE.
+#define BLE_SCAN 0 // 1 to also scan for BLE key tags (and set PRESENCE=on on the server)
 #define BLE_POST_MS 5000
 #define HAS_PN532 1 // 0 for an anchor board with no reader wired
 
@@ -31,3 +32,7 @@
 
 // Same card presented again within this window is ignored (reader chatter).
 #define CARD_DEBOUNCE_MS 2500
+
+// v4.1: "I am alive" to POST /api/heartbeat. The server's EXPECT_DEVICES check reports a reader silent for
+// DEVICE_SILENT_MINUTES (default 15). Optional: defaults to 5 minutes if not defined here.
+#define HEARTBEAT_MS (5UL * 60UL * 1000UL)

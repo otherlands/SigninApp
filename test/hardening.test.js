@@ -9,7 +9,7 @@ const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const { createApp } = require('../lib/app');
 
-const NO_ENV = { adminPin: '', apiToken: '', mirrorUrl: '', mirrorToken: '', teamsWebhookUrl: '', publicUrl: '', replica: false, sharepoint: {}, unifi: {}, backupDir: '' };
+const NO_ENV = { adminPin: '', apiToken: '', mirrorUrl: '', mirrorToken: '', teamsWebhookUrl: '', publicUrl: '', replica: false, sharepoint: {}, unifi: {}, backupDir: '', presence: true };
 async function boot(options = {}) {
     const app = createApp({ dataFile: ':memory:', ...NO_ENV, ...options });
     const server = http.createServer((req, res) => app.handle(req, res));

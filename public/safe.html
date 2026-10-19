@@ -21,27 +21,31 @@
         <h1 id="heading" style="font-size:2rem">Checking…</h1>
         <p id="message" class="muted" style="font-size:1.2rem"></p>
         <div id="picker" class="people hidden" style="margin-top:16px"></div>
-        <button id="change" class="ghost hidden" style="margin-top:16px">Not you? Choose a different name</button>
         <p class="muted" style="margin-top:24px;font-size:.9rem">This page talks to the sign-in server. If it cannot be reached (no office Wi-Fi, no VPN), tell the person
             running the roll call in person or by phone — do not assume this page got through.</p>
     </section>
     <script src="/shared.js"></script>
     <script>
-        // Self-marking: opened from the person's own "I'm SAFE" link (/safe?k=…), issued in Admin and added to the home
-        // screen. The key in the link is the identity: a self-mark can only ever be for the person who holds it. The
-        // page stores the key once and strips it from the address bar.
+        // Self-marking: opened from the person's own "I'm SAFE" link (/safe#k=…), issued in Admin and added to the home
+        // screen. The key is the identity: a self-mark can only ever be for the person who holds it. v4.1: the key is in
+        // the #fragment, which browsers never send to a server (so it is in no log), and it STAYS in the address bar so
+        // "Add to Home Screen" bookmarks it — a home-screen app on iPhone does not share the browser's storage. It is
+        // sent only in the X-Safe-Key header. localStorage is a second copy for browsers that drop the fragment.
         const { $, esc, api, fmtTime } = SI;
         const KEY = 'safe-key';
         let me;
         {
-            const q = new URLSearchParams(location.search);
-            if (q.get('k')) { localStorage.setItem(KEY, q.get('k')); history.replaceState(null, '', location.pathname); }
+            const h = new URLSearchParams(location.hash.slice(1)).get('k');
+            const q = new URLSearchParams(location.search).get('k');      // a v4.0.1-style link: move it into the fragment
+            if (h) localStorage.setItem(KEY, h);
+            else if (q) { localStorage.setItem(KEY, q); history.replaceState(null, '', `${location.pathname}#k=${encodeURIComponent(q)}`); }
+            else if (localStorage.getItem(KEY)) history.replaceState(null, '', `${location.pathname}#k=${encodeURIComponent(localStorage.getItem(KEY))}`);
         }
         const key = () => localStorage.getItem(KEY) || '';
         function noKey() {
             $('#heading').textContent = 'This phone has no "I\'m SAFE" link';
-            $('#message').textContent = 'Ask the admin for your personal link (Admin → Staff → I\'m SAFE link), open it once on this phone, then add it to your home screen.';
-            $('#picker').replaceChildren(); $('#change').classList.add('hidden');
+            $('#message').textContent = 'Ask the admin for your personal link (Admin → Staff → I\'m SAFE link), open it once on this phone, then add it to your home screen (Share → Add to Home Screen on iPhone; ⋮ → Add to Home screen on Android).';
+            $('#picker').replaceChildren();
         }
         function show() {
             $('#company').textContent = me.companyName;
@@ -55,16 +59,15 @@
             const b = document.createElement('button'); b.className = 'person in'; b.innerHTML = '<strong>I\'M SAFE</strong><span>I am outside at the assembly point</span>';
             b.onclick = async () => {
                 b.disabled = true;
-                try { await api('POST', '/api/fire/mark', { status: 'safe', via: 'self', k: key() }); if (navigator.vibrate) navigator.vibrate(80); await load(); }
+                try { await api('POST', '/api/fire/mark', { status: 'safe', via: 'self' }, { 'X-Safe-Key': key() }); if (navigator.vibrate) navigator.vibrate(80); await load(); }
                 catch (error) { b.disabled = false; $('#message').textContent = error.message; }
             };
             $('#picker').replaceChildren(b);
         }
         async function load() {
-            try { me = await api('GET', `/api/me?k=${encodeURIComponent(key())}`); show(); }
+            try { me = await api('GET', '/api/me', undefined, { 'X-Safe-Key': key() }); show(); }
             catch { $('#heading').textContent = 'Server unreachable'; $('#message').textContent = 'This phone cannot reach the sign-in server from here. Tell the person running the roll call directly.'; }
         }
-        $('#change').classList.add('hidden');
         load();
         SI.live(load, { fallbackMs: 15_000, debounceMs: 0 });
     </script>

@@ -853,6 +853,13 @@ body.fire.active.allsafe .fire-banner {
     border-bottom: 0;
 }
 
+.person-row .timeline {
+    grid-column: 1 / -1;
+    max-height: 320px;
+    overflow: auto;
+    font-size: .9rem;
+}
+
 .person-row input.card {
     min-height: 44px;
     padding: 8px 10px;

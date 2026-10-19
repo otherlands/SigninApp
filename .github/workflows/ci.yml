@@ -32,6 +32,19 @@ jobs:
         env:
           TZ_NAME: Not/AZone
 
+  e2e:
+    name: browser end-to-end (headless Chrome)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13'
+      # ubuntu-latest ships Google Chrome; the harness drives it over the DevTools protocol (no npm packages).
+      - run: npm run e2e
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+
   firmware:
     name: door-reader firmware builds
     runs-on: ubuntu-latest
@@ -49,16 +62,16 @@ jobs:
       - run: pip install platformio
       # config.h holds Wi-Fi + token secrets and is git-ignored; the example compiles the same code paths.
       - run: cp firmware/door-reader/include/config.example.h firmware/door-reader/include/config.h
-      - run: pio run
+      - name: plain card reader (BLE_SCAN 0, the default)
+        run: pio run
+        working-directory: firmware/door-reader
+      - name: reader + BLE presence scanner (BLE_SCAN 1)
+        run: sed -i 's/#define BLE_SCAN 0/#define BLE_SCAN 1/' include/config.h && grep -q '#define BLE_SCAN 1' include/config.h && pio run
         working-directory: firmware/door-reader
 
   scripts:
-    name: Pi scanner + shell scripts parse
+    name: shell scripts parse
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - run: python -m py_compile deploy/kiosk-pi/ble-scanner.py
       - run: for f in deploy/*.sh deploy/kiosk-pi/install.sh; do bash -n "$f"; done

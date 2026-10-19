@@ -3,6 +3,10 @@
 // RGB LED shows state. v3.5: also scans BLE for staff key tags (iBeacon or fixed-address beacons) and POSTs batched
 // sightings to /api/presence/ble every BLE_POST_MS — the same firmware runs as a door scanner or an inside anchor,
 // only SCANNER_NAME / SCANNER_ROLE differ (config.h). First compiled + flashed 2026-09-25; cards read 2026-09-27.
+// v4.1: every HTTP call (taps, fire start, BLE batches, health check, heartbeat) runs in one network task on core 0.
+// loop() only reads the button and the PN532 and drives the LED, so a slow or dead server can never make the fire
+// button or the reader unresponsive. Shared state (tap queue, fire request, LED flash) is guarded by netLock; no HTTP
+// call is ever made while holding it. POST /api/heartbeat every HEARTBEAT_MS lets the server notice a silent reader.
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -54,12 +58,22 @@ struct PendingTap
     uint32_t key;
     unsigned long at;
     bool restored; // came back from flash after a reboot: its real time is unknown, so the server must not toggle on it
+    bool tried;    // the network task has attempted it at least once (first attempt is immediate, retries every 5 s)
 };
 #define TAP_QUEUE_LEN 16
 static PendingTap tapQueue[TAP_QUEUE_LEN];
 static int tapHead = 0, tapCount = 0;
 static unsigned long lastTapRetry = 0;
 static unsigned long fireLedUntil = 0;   // non-blocking "roll call confirmed" red
+
+#ifndef HEARTBEAT_MS
+#define HEARTBEAT_MS (5UL * 60UL * 1000UL)
+#endif
+static unsigned long lastHeartbeat = 0;
+// Guards tapQueue/tapHead/tapCount, firePending/fireRequestedAt/lastFireAttempt, fireLedUntil and the LED flash.
+static SemaphoreHandle_t netLock = nullptr;
+#define LOCK() xSemaphoreTake(netLock, portMAX_DELAY)
+#define UNLOCK() xSemaphoreGive(netLock)
 
 enum Led
 {
@@ -95,6 +109,16 @@ void led(Led s)
     }
 #endif
 }
+// A short result colour set by the network task (green delivered, orange refused/not delivered); loop() shows it.
+static Led flashColour = LED_OFF;
+static unsigned long flashUntil = 0;
+void flash(Led c, unsigned long ms)
+{
+    LOCK();
+    flashColour = c;
+    flashUntil = millis() + ms;
+    UNLOCK();
+}
 
 void ensureWifi()
 {
@@ -103,7 +127,6 @@ void ensureWifi()
     if (millis() - lastWifiAttempt < 10000)
         return;
     lastWifiAttempt = millis();
-    led(LED_NOWIFI);
     LOG("[wifi] connecting to %s\n", WIFI_SSID);
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -237,6 +260,7 @@ void loadQueue()
             tapQueue[tapCount].key = item.substring(colon + 1).toInt();
             tapQueue[tapCount].at = millis();
             tapQueue[tapCount].restored = true;
+            tapQueue[tapCount].tried = true; // nobody is standing at the door for these: no LED flash
             tapCount++;
         }
         start = comma + 1;
@@ -245,6 +269,7 @@ void loadQueue()
         LOG("[tap] %d tap(s) restored from flash, will be sent when the server answers\n", tapCount);
 }
 
+// Caller holds netLock.
 void queueTap(const PendingTap &t)
 {
     if (tapCount == TAP_QUEUE_LEN)
@@ -258,23 +283,42 @@ void queueTap(const PendingTap &t)
     LOG("[tap] queued %s (%d waiting)\n", t.uid.c_str(), tapCount);
 }
 
+// Network task: send the oldest waiting tap. A new tap is tried at once; a failed one every 5 s. The tap is copied out
+// under the lock and sent without it; it is removed afterwards only if it is still the head (the queue may have
+// dropped it meanwhile when full).
 void drainTapQueue()
 {
-    if (!tapCount || WiFi.status() != WL_CONNECTED || millis() - lastTapRetry < 5000)
-        return;
-    lastTapRetry = millis();
-    bool changed = false;
-    while (tapCount)
+    while (true)
     {
-        int status = sendTap(tapQueue[tapHead]);
+        LOCK();
+        if (!tapCount)
+        {
+            UNLOCK();
+            return;
+        }
+        PendingTap head = tapQueue[tapHead];
+        bool due = !head.tried || millis() - lastTapRetry >= 5000;
+        UNLOCK();
+        if (!due)
+            return;
+        int status = sendTap(head);
+        LOCK();
+        lastTapRetry = millis();
+        bool stillHead = tapCount && tapQueue[tapHead].key == head.key;
+        if (stillHead && !retryable(status))
+        {
+            tapHead = (tapHead + 1) % TAP_QUEUE_LEN;
+            tapCount--;
+            saveQueue();
+        }
+        else if (stillHead)
+            tapQueue[tapHead].tried = true;
+        UNLOCK();
+        if (!head.tried) // feedback for the person at the door, once per tap
+            flash(status == 200 ? LED_OK : LED_FAIL, status == 200 ? 600 : 1200);
         if (retryable(status))
-            break;
-        tapHead = (tapHead + 1) % TAP_QUEUE_LEN;
-        tapCount--;
-        changed = true;
+            return;
     }
-    if (changed)
-        saveQueue();
 }
 
 void handleCard(const String &uid)
@@ -285,14 +329,12 @@ void handleCard(const String &uid)
     lastUidAt = millis();
     eventCounter++;
     prefs.putUInt("counter", eventCounter);
-    PendingTap t = {uid, eventCounter, millis(), false};
-    // Keep order: while older taps are waiting, a new one joins the back of the queue.
-    int status = tapCount ? -1 : sendTap(t);
-    if (retryable(status))
-        queueTap(t);
-    led(status == 200 ? LED_OK : LED_FAIL);
-    delay(status == 200 ? 600 : 1200);
-    led(LED_IDLE);
+    PendingTap t = {uid, eventCounter, millis(), false, false};
+    // Every tap goes through the queue (order kept, mirrored to flash); the network task sends it straight away and
+    // flashes green when the server took it, orange when it did not.
+    LOCK();
+    queueTap(t);
+    UNLOCK();
 }
 
 void handleFireButton()
@@ -302,33 +344,51 @@ void handleFireButton()
         buttonDownAt = millis();
     if (down && millis() - buttonDownAt >= FIRE_HOLD_MS && buttonWasDown)
     {
+        LOCK();
         if (!firePending)
             LOG("[fire] button held: starting a roll call\n");
         firePending = true;
         fireRequestedAt = millis();
         lastFireAttempt = 0;
+        UNLOCK();
         buttonDownAt = millis() + 60000; // one press = one roll call; ignore the rest of this hold
     }
     buttonWasDown = down;
 }
 
+// Network task.
 void serviceFire()
 {
-    if (!firePending || (lastFireAttempt && millis() - lastFireAttempt < FIRE_RETRY_MS))
-        return;
-    if (millis() - fireRequestedAt > FIRE_GIVE_UP_MS)
+    LOCK();
+    bool go = firePending && !(lastFireAttempt && millis() - lastFireAttempt < FIRE_RETRY_MS);
+    if (go && millis() - fireRequestedAt > FIRE_GIVE_UP_MS)
     {
         LOG("[fire] gave up after %lu min without reaching the server\n", FIRE_GIVE_UP_MS / 60000);
         firePending = false;
-        return;
+        go = false;
     }
-    lastFireAttempt = millis();
+    if (go)
+        lastFireAttempt = millis();
+    UNLOCK();
+    if (!go)
+        return;
     int status = postJson("/api/fire/start", "{\"source\":\"esp32\",\"by\":\"door button\",\"device\":\"" DEVICE_NAME "\"}");
     if (status >= 200 && status < 300)
     {
+        LOCK();
         firePending = false;
-        fireLedUntil = millis() + 3000; // steadyLed shows solid red until then; the loop keeps running
+        fireLedUntil = millis() + 3000; // steadyLed shows solid red until then
+        UNLOCK();
     }
+}
+
+// Network task: "I am alive" every HEARTBEAT_MS. Any valid device token is accepted (route auth device:any).
+void serviceHeartbeat()
+{
+    if (WiFi.status() != WL_CONNECTED || (lastHeartbeat && millis() - lastHeartbeat < HEARTBEAT_MS))
+        return;
+    lastHeartbeat = millis();
+    postJson("/api/heartbeat", "{\"device\":\"" DEVICE_NAME "\"}");
 }
 
 #if BLE_SCAN
@@ -433,6 +493,26 @@ void blePost()
 }
 #endif
 
+// The only place that talks to the network.
+void netTask(void *)
+{
+    for (;;)
+    {
+        ensureWifi();
+        if (WiFi.status() == WL_CONNECTED && !serverChecked)
+            checkServer();
+        if (WiFi.status() != WL_CONNECTED)
+            serverChecked = false;
+        serviceFire(); // first: a roll call matters more than a queued tap
+        drainTapQueue();
+#if BLE_SCAN
+        blePost();
+#endif
+        serviceHeartbeat();
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+}
+
 void setup()
 {
     Serial.begin(115200);
@@ -442,6 +522,7 @@ void setup()
     pinMode(PIN_FIRE_BUTTON, INPUT_PULLUP);
     prefs.begin("door", false);
     eventCounter = prefs.getUInt("counter", 0);
+    netLock = xSemaphoreCreateMutex();
     loadQueue();
 
     if (HAS_PN532)
@@ -449,20 +530,28 @@ void setup()
         Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
         probeNfc();
     }
-    ensureWifi();
 #if BLE_SCAN
     bleBegin();
 #endif
+    // Core 0 (where Wi-Fi runs); loop() stays on core 1. 8 KB stack: HTTPClient + String bodies.
+    xTaskCreatePinnedToCore(netTask, "net", 8192, nullptr, 1, nullptr, 0);
 }
 
 // Resting colour, re-asserted every loop so the guide's LED table stays true: purple no Wi-Fi, orange no PN532, dim blue ready.
 // A roll-call press that has not reached the server yet overrides everything: red blinking twice a second.
 void steadyLed()
 {
-    if (firePending)
+    LOCK();
+    bool pending = firePending;
+    unsigned long fireUntil = fireLedUntil, until = flashUntil;
+    Led colour = flashColour;
+    UNLOCK();
+    if (pending)
         led((millis() / 250) % 2 ? LED_FIRE : LED_OFF);
-    else if (millis() < fireLedUntil)
+    else if (millis() < fireUntil)
         led(LED_FIRE);
+    else if (millis() < until)
+        led(colour);
     else if (WiFi.status() != WL_CONNECTED)
         led(LED_NOWIFI);
     else if (HAS_PN532 && !nfcReady)
@@ -473,19 +562,8 @@ void steadyLed()
 
 void loop()
 {
-    ensureWifi();
     handleFireButton();
-    serviceFire();
     steadyLed();
-
-    if (WiFi.status() == WL_CONNECTED && !serverChecked)
-        checkServer();
-    if (WiFi.status() != WL_CONNECTED)
-        serverChecked = false;
-    drainTapQueue();
-#if BLE_SCAN
-    blePost();
-#endif
 
     if (millis() - lastStatus >= 30000)
     {

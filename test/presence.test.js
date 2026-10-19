@@ -24,7 +24,7 @@ function fakeUnifi() {
 
 async function boot(options = {}) {
     clock.min = 0;
-    const app = createApp({ dataFile: ':memory:', adminPin: '', apiToken: 'tok', mirrorUrl: '', mirrorToken: '', teamsWebhookUrl: '', publicUrl: '', replica: false, sharepoint: {}, now: testNow, ...options });
+    const app = createApp({ dataFile: ':memory:', adminPin: '', apiToken: 'tok', mirrorUrl: '', mirrorToken: '', teamsWebhookUrl: '', publicUrl: '', replica: false, sharepoint: {}, now: testNow, presence: true, ...options });
     const server = http.createServer((req, res) => app.handle(req, res));
     await new Promise(r => server.listen(0, '127.0.0.1', r));
     const base = `http://127.0.0.1:${server.address().port}`;

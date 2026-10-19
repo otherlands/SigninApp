@@ -28,13 +28,32 @@ function render(data) {
             if (!confirm(`Issue a new "I'm SAFE" link for ${p.name}? Any earlier link for them stops working.`)) return;
             api('POST', `/api/people/${p.id}/safe-link`, {}).then(d => {
                 navigator.clipboard?.writeText(d.link);
-                notice(noticeEl, `Link for ${p.name} copied — send it to them privately; they open it once on their phone and add it to the home screen: ${d.link}`, false, 30000);
+                notice(noticeEl, `Link for ${p.name} copied — send it to them privately; they open it once on their phone and add it to the home screen (the key is after the #, which never reaches any server log): ${d.link}`, false, 30000);
             }).catch(showError);
         };
         const remove = document.createElement('button'); remove.className = 'small ghost'; remove.textContent = 'Remove';
         remove.onclick = () => { if (confirm(`Remove ${p.name} from the kiosk? Their history is kept.`)) api('DELETE', `/api/people/${p.id}`).then(render).catch(showError); };
-        actions.append(toggle, safeLink, remove);
-        row.append(actions);
+        // v4.1: one click gives this person the card that was tapped last and not recognised (no copy/paste).
+        const giveCard = document.createElement('button'); giveCard.className = 'small ghost'; giveCard.textContent = 'Give last tapped card';
+        giveCard.classList.toggle('hidden', !data.lastUnknownCard);
+        giveCard.onclick = () => {
+            const uid = state.lastUnknownCard?.uid; if (!uid) return;
+            if (!confirm(`Give card ${uid} (tapped ${fmtWhen(state.lastUnknownCard.at)}) to ${p.name}?`)) return;
+            api('PATCH', `/api/people/${p.id}`, { cardUid: uid }).then(d => { render(d); notice(noticeEl, `Card ${uid} assigned to ${p.name}.`); }).catch(showError);
+        };
+        // v4.1: the person's own in/out history, newest first, folded from the event log.
+        const history = document.createElement('button'); history.className = 'small ghost'; history.textContent = 'History';
+        const timeline = document.createElement('div'); timeline.className = 'timeline hidden';
+        history.onclick = async () => {
+            if (!timeline.classList.contains('hidden')) { timeline.classList.add('hidden'); return; }
+            try {
+                const t = await api('GET', `/api/people/${p.id}/timeline`);
+                timeline.innerHTML = t.events.length ? t.events.slice(0, 60).map(e => `<div class="event"><span>${esc(e.kind)} <small class="muted">· ${esc(e.source)}${e.device ? ' · ' + esc(e.device) : ''}${e.note ? ' · ' + esc(e.note) : ''}</small></span><time>${esc(fmtWhen(e.at))}</time></div>`).join('') : '<p class="muted">No history yet.</p>';
+                timeline.classList.remove('hidden');
+            } catch (error) { showError(error); }
+        };
+        actions.append(toggle, history, giveCard, safeLink, remove);
+        row.append(actions, timeline);
         const cardInput = row.querySelector('input.card');
         cardInput.onkeydown = (e) => {
             if (e.key !== 'Enter') return;
@@ -145,7 +164,7 @@ async function loadEvents() {
     const events = await api('GET', '/api/events?limit=100');
     $('#events').replaceChildren(...events.map(e => {
         const item = document.createElement('div'); item.className = 'event';
-        const label = { in: 'signed in', out: 'signed out', fire_start: 'ROLL CALL STARTED', fire_end: 'ROLL CALL ENDED', safe: 'marked SAFE', missing: 'marked MISSING', unknown_card: 'unknown card', unknown_time_tap: 'card tapped while reader was offline (time unknown, not applied)', admin: 'admin:' }[e.kind] || e.kind;
+        const label = { in: 'signed in', out: 'signed out', fire_start: 'ROLL CALL STARTED', fire_end: 'ROLL CALL ENDED', safe: 'marked SAFE', missing: 'marked MISSING', mark_cleared: 'roll-call mark cleared', unknown_card: 'unknown card', unknown_time_tap: 'card tapped while reader was offline (time unknown, not applied)', admin: 'admin:' }[e.kind] || e.kind;
         item.innerHTML = `<span>${e.subjectName ? '<b>' + esc(e.subjectName) + '</b> ' : ''}${esc(label)}${e.subjectType === 'visitor' ? ' (visitor)' : ''} <small class="muted">· ${esc(e.source)}${e.device ? ' · ' + esc(e.device) : ''}${e.note ? ' · ' + esc(e.note) : ''}</small></span><time>${esc(fmtWhen(e.at))}</time>`;
         return item;
     }));
@@ -178,6 +197,14 @@ async function loadHealth() {
     if (!h.backup) parts.push('Backups: off (BACKUP_DIR empty)');
     else if (!h.backup.last) parts.push('Backups: on, none taken yet (first one runs within the hour)');
     else parts.push(`Backups: ${h.backup.last.ok ? '<b style="color:var(--in)">ok</b>' : '<b style="color:var(--amber)">FAILED</b> — ' + esc(h.backup.last.error || '')} at ${esc(fmtWhen(h.backup.last.at))}${h.backup.last.bytes ? ' (' + Math.round(h.backup.last.bytes / 1024) + ' KB)' : ''}${h.backup.last.offsite ? ' · off-site: ' + esc(h.backup.last.offsite) : ''}`);
+    if (h.backup?.offbox) { const o = h.backup.offbox.last; parts.push(`Off-box backup → ${esc(h.backup.offbox.target)}: ` + (!o ? 'none pushed yet' : o.ok ? `<b style="color:var(--in)">ok</b> at ${esc(fmtWhen(o.at))}` : `<b style="color:var(--amber)">FAILED</b> at ${esc(fmtWhen(o.at))} — ${esc(o.error)}`)); }
+    else if (h.backup) parts.push('Off-box backup: <b style="color:var(--amber)">not configured</b> (BACKUP_PUSH_TARGET) — every copy is on this server\'s own disk');
+    if (h.backup?.restoreDrill) { const r = h.backup.restoreDrill; parts.push(`Restore drill: ${r.ok ? `<b style="color:var(--in)">ok</b> ${esc(fmtWhen(r.at))} (${esc(r.file)}, ${r.events} events)` : `<b style="color:var(--amber)">FAILED</b> ${esc(fmtWhen(r.at))} — ${esc(r.error)}`}`); }
+    parts.push(h.heartbeat ? `Heartbeat (outside watcher): ${!h.heartbeat.last ? 'not sent yet' : h.heartbeat.last.ok ? `<b style="color:var(--in)">ok</b> ${esc(fmtWhen(h.heartbeat.last.at))}` : `<b style="color:var(--amber)">FAILED</b> — ${esc(h.heartbeat.last.error)}`}` : 'Heartbeat: not configured (HEARTBEAT_URL) — nothing outside notices if this server dies');
+    if (h.llm) parts.push(`Assistant model: ${!h.llm.last ? 'not probed yet' : h.llm.last.ok ? '<b style="color:var(--in)">reachable</b>' : `<b style="color:var(--amber)">unreachable</b> — ${esc(h.llm.last.error)}`}`);
+    parts.push(`Presence (Wi-Fi/BLE): ${h.presence ? 'on' : 'off (PRESENCE=on to enable)'}`);
+    const failing = (h.checks || []).filter(c => !c.ok);
+    parts.unshift(failing.length ? `<b style="color:var(--amber)">${failing.length} health check(s) failing:</b> ${failing.map(c => `${esc(c.name)} (${esc(c.detail || '')})`).join(' · ')}` : '<b style="color:var(--in)">All health checks pass.</b>');
     $('#offsiteState').innerHTML = parts.join('<br>');
 }
 

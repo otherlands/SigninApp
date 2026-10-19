@@ -24,9 +24,22 @@
 
 signin.eright.co.uk {
     encode zstd gzip
+    # v4.1: Caddy logs request headers. Cookie/Authorization are redacted by Caddy itself; the app's own secret headers
+    # are not, so they are deleted here. A pre-v4.1 "?k=" link would put the key in the URI: that query is deleted too.
     log {
         output stderr
-        format console
+        format filter {
+            wrap console
+            fields {
+                request>headers>X-Safe-Key delete
+                request>headers>X-Admin-Pin delete
+                request>headers>X-Api-Token delete
+                request>headers>X-Mirror-Token delete
+                request>uri query {
+                    delete k
+                }
+            }
+        }
     }
     header {
         Strict-Transport-Security "max-age=31536000"
@@ -50,7 +63,7 @@ signin.eright.co.uk {
     # Pages and the files they load (GET only)
     @public_get {
         method GET
-        path /fire /rollcall /safe /fire.js /shared.js /style.css /favicon.svg /sw.js /manifest.webmanifest /api/fire /api/me /api/stream
+        path /fire /rollcall /safe /fire.js /shared.js /style.css /favicon.svg /sw.js /fire.webmanifest /api/fire /api/me /api/stream
     }
     # The one write: a person marking THEMSELVES safe (the app insists on via:self + a valid personal key)
     @public_post {

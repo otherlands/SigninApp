@@ -28,14 +28,17 @@ async function boot(options = {}) {
     return { app, call, base, close: () => new Promise(r => { app.close(); server.closeAllConnections?.(); server.close(() => r()); }) };
 }
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'signin-v4-'));
+// v4.1: the personal key lives in the link's #fragment and travels in the X-Safe-Key header.
+const keyOf = (link) => new URLSearchParams(new URL(link).hash.slice(1)).get('k');
+const SK = (k) => ({ 'X-Safe-Key': k });
 
 test('route table: every API route declares its auth; the matrix holds for anonymous / admin / scoped device / mirror', async () => {
-    const { app, call, close } = await boot({ adminPin: '246810', apiToken: 'shared-token-0123456789', mirrorToken: 'mirror-token' });
+    const { app, call, close } = await boot({ adminPin: '246810', apiToken: 'shared-token-0123456789', mirrorToken: 'mirror-token', presence: true });
     const A = { 'X-Admin-Pin': '246810' };
     try {
         const table = app.router.table();
         assert.ok(table.length >= 40);
-        for (const r of table) assert.match(r.auth, /^(public|admin|mirror|claim:(sign|fire)|device:(presence))$/, `${r.method} ${r.path} declares ${r.auth}`);
+        for (const r of table) assert.match(r.auth, /^(public|admin|mirror|claim:(sign|fire)|device:(presence|any))$/, `${r.method} ${r.path} declares ${r.auth}`);
         const { token: presenceTok } = (await call('POST', '/api/devices', { name: 'anchor', scopes: ['presence'] }, A)).json;
         // Every admin route refuses anonymous and a device token, and accepts the PIN (status != 401/403)
         for (const r of table.filter(x => x.auth === 'admin')) {
@@ -140,14 +143,15 @@ test('drill + self-marking: DRILL cards, via:self marks, /api/me, all-accounted 
         assert.deepEqual(card.actions.map(x => [x.title, x.url]), [["I'm SAFE", 'https://signin.eright.co.uk/safe'], ['Open the roll call', 'https://signin.eright.co.uk/fire']]);
         r = await call('GET', `/api/me?personId=${p.id}`);
         assert.equal(r.json.person, null, 'a person id alone proves nothing');
-        const k = new URL((await call('POST', `/api/people/${p.id}/safe-link`, {})).json.link).searchParams.get('k');
-        r = await call('GET', `/api/me?k=${k}`);
+        const k = keyOf((await call('POST', `/api/people/${p.id}/safe-link`, {})).json.link);
+        r = await call('GET', '/api/me', undefined, SK(k));
         assert.equal(r.json.rollcall.onRegister, true); assert.equal(r.json.rollcall.mark, null);
-        assert.equal((await call('POST', '/api/fire/mark', { status: 'missing', via: 'self', k })).status, 400, 'self can only say SAFE');
-        r = await call('POST', '/api/fire/mark', { status: 'safe', via: 'self', k });
+        assert.equal((await call('POST', '/api/fire/mark', { status: 'missing', via: 'self' }, SK(k))).status, 400, 'self can only say SAFE');
+        r = await call('POST', '/api/fire/mark', { status: 'safe', via: 'self' }, SK(k));
         assert.equal(r.json.rollcall.selfMarked, 1);
         assert.equal(r.json.rollcall.marks[0].by, 'Self Marker (self)'); assert.equal(r.json.rollcall.marks[0].via, 'self');
-        assert.equal((await call('GET', `/api/me?k=${k}`)).json.rollcall.mark, 'safe');
+        assert.equal((await call('GET', '/api/me', undefined, SK(k))).json.rollcall.mark, 'safe');
+        assert.equal((await call('GET', `/api/me?k=${k}`)).json.person, null, 'a key in the query string is ignored (it would be logged)');
         r = await call('POST', '/api/fire/mark', { subjectType: 'staff', subjectId: q.id, status: 'safe', by: 'Alan' });
         assert.equal(r.json.rollcall.allSafe, true); assert.ok(r.json.rollcall.allSafeAt);
         await settle();
@@ -308,8 +312,8 @@ test('public boundary: X-Public requests reach only the roll-call read path and 
         // the route table marks exactly four API routes public
         assert.deepEqual(app.router.table().filter(r => r.public).map(r => `${r.method} ${r.path}`).sort(), ['GET /api/fire', 'GET /api/me', 'GET /api/stream', 'POST /api/fire/mark']);
         // from the internet: pages and assets allowed, everything else 403 — even with the admin PIN
-        for (const p of ['/fire', '/rollcall', '/safe', '/fire.js', '/shared.js', '/style.css', '/favicon.svg', '/sw.js', '/manifest.webmanifest']) assert.equal((await call('GET', p, undefined, P)).status, 200, p);
-        for (const p of ['/', '/admin', '/tap', '/visitor', '/kiosk.js', '/admin.js', '/api/state', '/api/roster', '/api/health', '/api/people', '/api/events', '/api/export', '/metrics', '/api/routes']) assert.equal((await call('GET', p, undefined, { ...P, ...A })).status, 403, p);
+        for (const p of ['/fire', '/rollcall', '/safe', '/fire.js', '/shared.js', '/style.css', '/favicon.svg', '/sw.js', '/fire.webmanifest']) assert.equal((await call('GET', p, undefined, P)).status, 200, p);
+        for (const p of ['/', '/admin', '/tap', '/visitor', '/kiosk.js', '/admin.js', '/manifest.webmanifest', '/api/state', '/api/roster', '/api/health', '/api/people', '/api/events', '/api/export', '/metrics', '/api/routes']) assert.equal((await call('GET', p, undefined, { ...P, ...A })).status, 403, p);
         for (const [m, p] of [['POST', '/api/sign'], ['POST', '/api/visitors'], ['POST', '/api/fire/start'], ['POST', '/api/fire/end'], ['POST', '/api/admin/login'], ['POST', '/api/people'], ['POST', '/api/presence/ble'], ['POST', '/api/backup']]) assert.equal((await call(m, p, { personId: ann.id, name: 'x', pin: 'pin' }, { ...P, ...A })).status, 403, `${m} ${p}`);
         assert.equal((await call('GET', '/api/fire', undefined, P)).json.public, true);
 
@@ -317,31 +321,31 @@ test('public boundary: X-Public requests reach only the roll-call read path and 
         await call('POST', '/api/fire/start', { source: 'fire-page' });
         assert.equal((await call('POST', '/api/fire/mark', { subjectType: 'staff', subjectId: ann.id, status: 'safe', by: 'stranger' }, P)).status, 403, 'marshal-style ticks are refused from the internet');
         assert.equal((await call('POST', '/api/fire/mark', { status: 'safe', via: 'self' }, P)).status, 401, 'self without a key');
-        assert.equal((await call('POST', '/api/fire/mark', { status: 'safe', via: 'self', k: 'guess-guess-guess-guess' }, P)).status, 401);
+        assert.equal((await call('POST', '/api/fire/mark', { status: 'safe', via: 'self' }, { ...P, ...SK('guess-guess-guess-guess') })).status, 401);
         assert.equal((await call('POST', '/api/fire/mark', { status: 'safe', via: 'self' })).status, 401, 'on the LAN too: a self-mark always needs the key');
 
         // admin issues Ann's link; the key names Ann whatever the request claims
         assert.equal((await call('POST', `/api/people/${ann.id}/safe-link`, {})).status, 401, 'admin only');
         let r = await call('POST', `/api/people/${ann.id}/safe-link`, {}, A);
-        assert.match(r.json.link, /^https:\/\/signin\.eright\.co\.uk\/safe\?k=[A-Za-z0-9_-]{20,}$/);
-        const k = new URL(r.json.link).searchParams.get('k');
-        assert.equal((await call('GET', `/api/me?k=${k}`, undefined, P)).json.person.name, 'Ann');
+        assert.match(r.json.link, /^https:\/\/signin\.eright\.co\.uk\/safe#k=[A-Za-z0-9_-]{20,}$/);
+        const k = keyOf(r.json.link);
+        assert.equal((await call('GET', '/api/me', undefined, { ...P, ...SK(k) })).json.person.name, 'Ann');
         assert.equal((await call('GET', '/api/me', undefined, P)).json.person, null);
-        r = await call('POST', '/api/fire/mark', { subjectType: 'staff', subjectId: bob.id, status: 'safe', via: 'self', k }, P);
+        r = await call('POST', '/api/fire/mark', { subjectType: 'staff', subjectId: bob.id, status: 'safe', via: 'self' }, { ...P, ...SK(k) });
         assert.equal(r.status, 200);
         assert.deepEqual(r.json.rollcall.marks.map(m => [m.subjectId === ann.id ? 'Ann' : 'Bob', m.via, m.by]), [['Ann', 'self', 'Ann (self)']], 'Ann\'s key marked Ann, not Bob');
-        assert.equal((await call('POST', '/api/fire/mark', { status: 'missing', via: 'self', k }, P)).status, 400, 'self can only say safe');
+        assert.equal((await call('POST', '/api/fire/mark', { status: 'missing', via: 'self' }, { ...P, ...SK(k) })).status, 400, 'self can only say safe');
         // rotation invalidates the old link; revocation ends it
-        const k2 = new URL((await call('POST', `/api/people/${ann.id}/safe-link`, {}, A)).json.link).searchParams.get('k');
-        assert.equal((await call('GET', `/api/me?k=${k}`, undefined, P)).json.person, null);
-        assert.equal((await call('GET', `/api/me?k=${k2}`, undefined, P)).json.person.name, 'Ann');
+        const k2 = keyOf((await call('POST', `/api/people/${ann.id}/safe-link`, {}, A)).json.link);
+        assert.equal((await call('GET', '/api/me', undefined, { ...P, ...SK(k) })).json.person, null);
+        assert.equal((await call('GET', '/api/me', undefined, { ...P, ...SK(k2) })).json.person.name, 'Ann');
         await call('DELETE', `/api/people/${ann.id}/safe-link`, undefined, A);
-        assert.equal((await call('GET', `/api/me?k=${k2}`, undefined, P)).json.person, null);
+        assert.equal((await call('GET', '/api/me', undefined, { ...P, ...SK(k2) })).json.person, null);
         assert.ok((await call('GET', '/api/events?limit=10', undefined, A)).json.some(e => /I'm SAFE" link (issued|rotated)/.test(e.note)));
         // a removed person's key stops working
-        const k3 = new URL((await call('POST', `/api/people/${bob.id}/safe-link`, {}, A)).json.link).searchParams.get('k');
+        const k3 = keyOf((await call('POST', `/api/people/${bob.id}/safe-link`, {}, A)).json.link);
         await call('DELETE', `/api/people/${bob.id}`, undefined, A);
-        assert.equal((await call('GET', `/api/me?k=${k3}`, undefined, P)).json.person, null);
+        assert.equal((await call('GET', '/api/me', undefined, { ...P, ...SK(k3) })).json.person, null);
     } finally { await close(); }
 });
 

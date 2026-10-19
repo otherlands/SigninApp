@@ -4,8 +4,8 @@
 //   - keeps the last /api/fire answer so the register the device last saw is shown (the page labels it as cached);
 //   - never caches writes. Queued SAFE/MISSING ticks are kept and replayed by fire.js itself (localStorage), because
 //     they must also survive the page being closed and the browser having no Background Sync.
-const VERSION = 'signin-sw-v4.0';
-const SHELL = ['/fire', '/fire.js', '/shared.js', '/style.css', '/favicon.svg'];
+const VERSION = 'signin-sw-v4.1';
+const SHELL = ['/fire', '/fire.js', '/shared.js', '/style.css', '/favicon.svg', '/fire.webmanifest'];
 
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim())); });

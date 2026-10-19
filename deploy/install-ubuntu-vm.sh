@@ -5,7 +5,8 @@
 #   sudo REPO_URL=https://github.com/otherlands/SigninApp.git bash deploy/install-ubuntu-vm.sh
 #   (or run it from an already-cloned checkout: sudo bash deploy/install-ubuntu-vm.sh)
 #
-# What it does: 1 checks Node >= 22.13  2 creates the `signin` user + /opt/eright-signin (clone or update)
+# What it does: 1 checks Node >= 22.13  2 creates the `signin` user + /opt/eright-signin (clone or update) and runs
+#               the test suite as a GATE (v4.1): if any test fails the checkout is put back and nothing is restarted
 #               3 writes /etc/eright-signin.env once with GENERATED ADMIN_PIN + API_TOKEN (printed ONCE, never again)
 #               4 installs + enables eright-signin.service  5 proves /metrics answers  6 prints the address for
 #               the estate's Prometheus (SIGNIN_ADDR) and the SP_*/TEAMS_* lines still to fill in by hand.
@@ -24,7 +25,9 @@ echo "  node $NV ok"
 
 echo "== 2 user + checkout =="
 id signin >/dev/null 2>&1 || useradd --system --home-dir "$DEST" --shell /usr/sbin/nologin signin
+PREV=""
 if [ -d "$DEST/.git" ]; then
+  PREV=$(sudo -u signin git -C "$DEST" rev-parse HEAD)
   # run git as the owner: root pulling a signin-owned checkout trips git's "dubious ownership" refusal
   sudo -u signin git -C "$DEST" pull --ff-only -q && echo "  updated $(git -C "$DEST" rev-parse --short HEAD)"
 elif [ -n "$REPO_URL" ]; then
@@ -37,7 +40,18 @@ fi
 install -d -o signin -g signin -m 0750 "$DEST/data"
 chown -R signin:signin "$DEST"
 git config --global --add safe.directory "$DEST" 2>/dev/null || true
-(cd "$DEST" && sudo -u signin node --disable-warning=ExperimentalWarning --test 'test/**/*.test.js' 2>&1 | grep -E '^# (pass|fail)' | sed 's/^/  tests: /')
+TLOG=$(mktemp)
+if ! (cd "$DEST" && sudo -u signin node --disable-warning=ExperimentalWarning --test 'test/**/*.test.js' >"$TLOG" 2>&1); then
+  grep -E '^(# |ℹ )(pass|fail)|^not ok|^✖' "$TLOG" | head -20 | sed 's/^/  tests: /'
+  if [ -n "$PREV" ]; then
+    sudo -u signin git -C "$DEST" reset -q --hard "$PREV"
+    echo "  TESTS FAILED: checkout put back to ${PREV:0:7}; the running service was NOT restarted. Full log: $TLOG"
+  else
+    echo "  TESTS FAILED on a fresh install: not starting the service. Full log: $TLOG"
+  fi
+  exit 1
+fi
+grep -E '^(# |ℹ )(pass|fail)' "$TLOG" | sed 's/^/  tests: /'; rm -f "$TLOG"
 
 echo "== 3 env file =="
 if [ ! -f "$ENVF" ]; then
@@ -87,6 +101,29 @@ RETENTION_DAYS=2190
 #TLS_CERT_FILE=
 #TLS_KEY_FILE=
 #TLS_PORT=3443
+# ---- v4.1 ----
+# Wi-Fi/BLE presence is OFF unless switched on here (the UNIFI_*/DOOR_SCANNERS lines above do nothing without it).
+#PRESENCE=on
+# Off-box backup copy: rsync over ssh after every backup, to signin-<Weekday>.sqlite (7 rolling copies) on the target.
+#BACKUP_PUSH_TARGET=aiadmin@192.168.102.100:
+#BACKUP_PUSH_KEY=/opt/eright-signin/data/.ssh/backup_push
+#BACKUP_PUSH_KNOWN_HOSTS=/opt/eright-signin/data/.ssh/known_hosts
+# Outside watcher: a URL this server GETs every HEARTBEAT_MINUTES (e.g. a healthchecks.io check); it alerts when pings stop.
+#HEARTBEAT_URL=
+#HEARTBEAT_MINUTES=5
+# A SEPARATE Teams webhook for operational alerts (outside checks failing/recovering), not the fire channel.
+#OPS_TEAMS_WEBHOOK_URL=
+# Subnets allowed the full app; any other LAN address gets only the internet view (fire page + device routes with a token).
+#TRUSTED_NETS=192.168.101.0/24
+# Outside checks (hourly): DNS on the LAN and in public DNS, certificate days, SP secret expiry, silent devices.
+#DRIFT_HOSTNAME=signin.eright.co.uk
+#EXPECT_PUBLIC_IP=
+#SP_SECRET_EXPIRES=2027-10-19
+#EXPECT_DEVICES=back-door-reader
+#DEVICE_SILENT_MINUTES=15
+# Roll-call chaser: re-post the not-accounted names to Teams every N minutes (0 = off), at most CHASER_MAX times.
+#CHASER_MINUTES=3
+#CHASER_MAX=10
 EOF
   chmod 600 "$ENVF"
   echo "  WRITTEN $ENVF — the generated ADMIN_PIN is $PIN and API_TOKEN is $TOK. Record them now; they are not printed again."

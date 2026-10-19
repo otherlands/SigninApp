@@ -25,8 +25,10 @@ function render(data) {
         const pres = person.signedIn && person.presence ? (person.presence.state === 'here' ? '<span class="badge" title="phone or key tag seen inside">📱</span>' : person.presence.state === 'probably-left' ? `<span class="badge" title="phone and key tag absent">📵 ${SI.fmtTime(person.presence.lastSeen)}</span>` : '') : '';
         b.innerHTML = `<strong>${esc(person.name)}</strong><span>${esc(sub)}</span>${pres || (person.hasCard ? '<span class="badge">card</span>' : '')}`;
         b.onclick = () => sign({ personId: person.id }, person.name);
+        b.dataset.name = person.name.toLowerCase();
         return b;
     }));
+    applyFilter();
 
     if (!data.visitors.length) {
         visitorsEl.innerHTML = '<p class="muted">No visitors on site.</p>';
@@ -99,12 +101,33 @@ async function visitorOut(v) {
     }
     if (q.has('device') && q.get('device')) localStorage.setItem('deviceName', q.get('device').slice(0, 40));
 }
-listenForCardWedge((uid) => {
+function signByCard(uid) {
     const token = localStorage.getItem('cardToken') || '';
     api('POST', '/api/sign', { cardUid: uid, source: 'card' }, token ? { 'X-Api-Token': token } : {})
         .then(data => { render(data.state); notice(noticeEl, `${data.event.subjectName} signed ${data.event.kind.toUpperCase()} by card.`, false, 8000, undoFor(data.event)); })
         .catch(error => notice(noticeEl, error.message, true, 8000));
-}, $('#cardHint'));
+}
+listenForCardWedge(signByCard, $('#cardHint'));
+
+// v4.1: name search. Filters the staff buttons as you type; clears itself after 20 s idle so the next person starts
+// clean. A card tapped while the box has focus types its number + Enter into it: that is treated as the card.
+const search = $('#search');
+let searchIdle = null;
+function applyFilter() {
+    const q = (search?.value || '').trim().toLowerCase();
+    for (const b of peopleEl.querySelectorAll('.person')) b.classList.toggle('hidden', Boolean(q) && !b.dataset.name.includes(q));
+}
+if (search) {
+    search.oninput = () => { applyFilter(); clearTimeout(searchIdle); searchIdle = setTimeout(() => { search.value = ''; applyFilter(); search.blur(); }, 20_000); };
+    search.onkeydown = (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const v = search.value.trim();
+        if (/^[0-9a-f:\- ]{8,}$/i.test(v) && /\d/.test(v)) { search.value = ''; applyFilter(); search.blur(); signByCard(v); return; }
+        const visible = [...peopleEl.querySelectorAll('.person:not(.hidden)')];
+        if (visible.length === 1) { search.value = ''; applyFilter(); search.blur(); visible[0].click(); }
+    };
+}
 
 load();
 SI.live(load, { fallbackMs: 30_000 });
