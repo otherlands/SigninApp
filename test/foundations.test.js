@@ -148,7 +148,7 @@ test('backup schedule: first run at once, then nightly at BACKUP_HOUR local, a f
         nowIso = '2026-10-19T23:00:00.000Z'; assert.equal((await app.backupIfDue()).skipped, true, 'same night, before 02:00 BST');
         nowIso = '2026-10-20T01:05:00.000Z'; assert.equal((await app.backupIfDue()).ok, true, '02:05 BST next day: nightly backup');
         nowIso = '2026-10-20T03:00:00.000Z'; assert.equal((await app.backupIfDue()).skipped, true, 'already done tonight');
-        app.store.setSetting('backupStatus', { at: '2026-10-20T03:00:00.000Z', ok: false, error: 'disk full' });
+        app.store.setState('backupStatus', { at: '2026-10-20T03:00:00.000Z', ok: false, error: 'disk full' });
         nowIso = '2026-10-20T03:30:00.000Z'; assert.equal((await app.backupIfDue()).skipped, true, 'failure: wait an hour');
         nowIso = '2026-10-20T04:01:00.000Z'; assert.equal((await app.backupIfDue()).ok, true, 'then retry');
     } finally { app.close(); fs.rmSync(dir, { recursive: true, force: true }); }

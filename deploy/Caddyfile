@@ -1,0 +1,23 @@
+# Caddy in front of the sign-in server: HTTPS for signin.eright.co.uk, HTTP kept for the kiosk and printed QR codes.
+# Install with deploy/install-caddy.sh. Nothing here is active until that script is run.
+#
+# BEFORE THIS CAN WORK (verified 2026-10-19, none of it is in place yet):
+#   1. Public DNS: signin.eright.co.uk does not exist. eright.co.uk is on GoDaddy nameservers (ns13/ns14.domaincontrol.com).
+#      Either create an A record -> the site's public address (46.37.62.121 as seen from the office on 2026-10-19; check it is
+#      static) with ports 80+443 forwarded on the UniFi gateway to this server, OR use the DNS-01 variant below.
+#   2. The LAN DNS record on the UniFi gateway (192.168.101.1) currently answers 192.168.101.168 for this name, and nothing
+#      lives at .168. Point it at this server (192.168.101.102) or at wherever Caddy runs.
+#   3. PUBLIC_URL=https://signin.eright.co.uk in /etc/eright-signin.env, then restart the service.
+
+signin.eright.co.uk {
+    # HTTP-01: needs port 80 reachable from the internet at this name.
+    # DNS-01 instead (no port-forward needed): build Caddy with the GoDaddy module (xcaddy build --with github.com/caddy-dns/godaddy)
+    # and uncomment:  tls { dns godaddy {env.GODADDY_TOKEN} }
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:3000 {
+        # the app uses this to mark the admin cookie Secure
+        header_up X-Forwarded-Proto https
+        # SSE must not be buffered
+        flush_interval -1
+    }
+}

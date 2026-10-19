@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0a0d1a">
+    <title>I'm safe</title>
+    <link rel="icon" href="/favicon.svg">
+    <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+    <header class="top">
+        <div class="brand">
+            <div class="logo"></div>
+            <h1 id="company">…</h1>
+        </div>
+    </header>
+    <section class="panel" style="text-align:center">
+        <h1 id="heading" style="font-size:2rem">Checking…</h1>
+        <p id="message" class="muted" style="font-size:1.2rem"></p>
+        <div id="picker" class="people hidden" style="margin-top:16px"></div>
+        <button id="change" class="ghost hidden" style="margin-top:16px">Not you? Choose a different name</button>
+        <p class="muted" style="margin-top:24px;font-size:.9rem">This page talks to the sign-in server. If it cannot be reached (no office Wi-Fi, no VPN), tell the person
+            running the roll call in person or by phone — do not assume this page got through.</p>
+    </section>
+    <script src="/shared.js"></script>
+    <script>
+        // Self-marking: opened from the "I'm SAFE" button on the Teams card, or from a home-screen shortcut.
+        // The phone remembers who you are (same key as /tap). One big button marks you SAFE on the open roll call.
+        const { $, esc, api, fmtTime } = SI;
+        const KEY = 'door-tap-person-id';
+        let me;
+        function showPicker() {
+            $('#heading').textContent = 'Who are you?'; $('#message').textContent = 'Your choice is remembered on this phone.';
+            $('#picker').classList.remove('hidden'); $('#change').classList.add('hidden');
+            $('#picker').replaceChildren(...me.people.map(p => {
+                const b = document.createElement('button'); b.className = 'person'; b.innerHTML = `<strong>${esc(p.name)}</strong><span>Use this name</span>`;
+                b.onclick = () => { localStorage.setItem(KEY, p.id); load(); }; return b;
+            }));
+        }
+        function show() {
+            $('#company').textContent = me.companyName;
+            if (!me.person) return showPicker();
+            $('#picker').classList.remove('hidden'); $('#change').classList.remove('hidden');
+            $('#heading').textContent = me.person.name;
+            if (!me.rollcall) { $('#message').textContent = 'No roll call is running right now.'; $('#picker').replaceChildren(); return; }
+            if (!me.rollcall.onRegister) { $('#message').textContent = `A ${me.rollcall.drill ? 'drill' : 'roll call'} started ${fmtTime(me.rollcall.startedAt)} but you were not signed in, so you are not on its register. If you ARE on site, tell the person running it.`; $('#picker').replaceChildren(); return; }
+            if (me.rollcall.mark === 'safe') { $('#message').textContent = `You are marked SAFE on the ${me.rollcall.drill ? 'drill' : 'roll call'} that started ${fmtTime(me.rollcall.startedAt)}.`; $('#picker').replaceChildren(); return; }
+            $('#message').textContent = `${me.rollcall.drill ? 'Fire DRILL' : 'FIRE ROLL CALL'} started ${fmtTime(me.rollcall.startedAt)}. Are you out of the building and safe?`;
+            const b = document.createElement('button'); b.className = 'person in'; b.innerHTML = '<strong>I\'M SAFE</strong><span>I am outside at the assembly point</span>';
+            b.onclick = async () => {
+                b.disabled = true;
+                try { await api('POST', '/api/fire/mark', { subjectType: 'staff', subjectId: me.person.id, status: 'safe', via: 'self' }); if (navigator.vibrate) navigator.vibrate(80); await load(); }
+                catch (error) { b.disabled = false; $('#message').textContent = error.message; }
+            };
+            $('#picker').replaceChildren(b);
+        }
+        async function load() {
+            try { me = await api('GET', `/api/me?personId=${encodeURIComponent(localStorage.getItem(KEY) || '')}`); show(); }
+            catch { $('#heading').textContent = 'Server unreachable'; $('#message').textContent = 'This phone cannot reach the sign-in server from here. Tell the person running the roll call directly.'; }
+        }
+        $('#change').onclick = () => { localStorage.removeItem(KEY); showPicker(); };
+        load();
+        SI.live(load, { fallbackMs: 15_000, debounceMs: 0 });
+    </script>
+</body>
+
+</html>

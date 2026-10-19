@@ -136,7 +136,7 @@ async function loadEvents() {
     const events = await api('GET', '/api/events?limit=100');
     $('#events').replaceChildren(...events.map(e => {
         const item = document.createElement('div'); item.className = 'event';
-        const label = { in: 'signed in', out: 'signed out', fire_start: 'ROLL CALL STARTED', fire_end: 'ROLL CALL ENDED', safe: 'marked SAFE', missing: 'marked MISSING', unknown_card: 'unknown card', admin: 'admin:' }[e.kind] || e.kind;
+        const label = { in: 'signed in', out: 'signed out', fire_start: 'ROLL CALL STARTED', fire_end: 'ROLL CALL ENDED', safe: 'marked SAFE', missing: 'marked MISSING', unknown_card: 'unknown card', unknown_time_tap: 'card tapped while reader was offline (time unknown, not applied)', admin: 'admin:' }[e.kind] || e.kind;
         item.innerHTML = `<span>${e.subjectName ? '<b>' + esc(e.subjectName) + '</b> ' : ''}${esc(label)}${e.subjectType === 'visitor' ? ' (visitor)' : ''} <small class="muted">· ${esc(e.source)}${e.device ? ' · ' + esc(e.device) : ''}${e.note ? ' · ' + esc(e.note) : ''}</small></span><time>${esc(fmtWhen(e.at))}</time>`;
         return item;
     }));
@@ -162,6 +162,10 @@ async function loadHealth() {
         parts.push('Teams channel: ' + (!t ? 'configured, nothing sent yet' : t.ok ? `<b style="color:var(--in)">ok</b> last post ${esc(fmtWhen(t.at))}` : `<b style="color:var(--amber)">FAILED</b> ${esc(fmtWhen(t.at))} — ${esc(t.error)} (retrying)`));
     } else parts.push('Teams channel: not configured (TEAMS_WEBHOOK_URL) — roll-call start / all-safe / end will not be pushed');
     parts.push(`Queued snapshots waiting: ${h.outbox}`);
+    if (h.mslist) { const ms = h.mslist.last; parts.push(`Microsoft List "${esc(h.mslist.list)}": ` + (!ms ? 'no sync yet' : ms.ok ? `<b style="color:var(--in)">ok</b> at ${esc(fmtWhen(ms.at))} (${ms.rows} rows)` : `<b style="color:var(--amber)">FAILED</b> at ${esc(fmtWhen(ms.at))} — ${esc(ms.error)}`)); }
+    else parts.push('Microsoft List register: not configured (SP_LIST + the SP_* app registration)');
+    parts.push(h.retention ? `Retention: ${h.retention.days} days${h.retention.last ? ` · last run ${esc(fmtWhen(h.retention.last.at))}: ${h.retention.last.visitorsAnonymised ?? 0} visitors anonymised, ${h.retention.last.eventsDeleted ?? 0} events deleted` : ''}` : 'Retention: OFF (RETENTION_DAYS) — a data-protection decision owed');
+    parts.push(h.tls ? `TLS: on, port ${h.tls.port}` : 'TLS: off (plain HTTP). The offline fire page needs HTTPS.');
     if (!h.backup) parts.push('Backups: off (BACKUP_DIR empty)');
     else if (!h.backup.last) parts.push('Backups: on, none taken yet (first one runs within the hour)');
     else parts.push(`Backups: ${h.backup.last.ok ? '<b style="color:var(--in)">ok</b>' : '<b style="color:var(--amber)">FAILED</b> — ' + esc(h.backup.last.error || '')} at ${esc(fmtWhen(h.backup.last.at))}${h.backup.last.bytes ? ' (' + Math.round(h.backup.last.bytes / 1024) + ' KB)' : ''}${h.backup.last.offsite ? ' · off-site: ' + esc(h.backup.last.offsite) : ''}`);
@@ -244,12 +248,30 @@ $('#rollcallHistory').onclick = async () => {
         const list = await api('GET', '/api/fire/history');
         if (!list.length) return notice(noticeEl, 'No roll calls recorded yet.');
         showingHistory = true;
-        $('#events').innerHTML = `<table><tr><th>Started</th><th>Ended</th><th>By</th><th>Source</th><th>On register</th><th>Safe</th><th>Missing</th><th>Not seen</th></tr>
-      ${list.map(rc => `<tr><td>${esc(fmtWhen(rc.startedAt))}</td><td>${rc.endedAt ? esc(fmtWhen(rc.endedAt)) : '<b>open</b>'}</td><td>${esc(rc.startedBy || '')}</td><td>${esc(rc.source || '')}</td><td>${rc.total}</td><td>${rc.safe}</td><td>${rc.missing}</td><td>${rc.unaccounted}</td></tr>`).join('')}</table>
+        $('#events').innerHTML = `<table><tr><th>Started</th><th>Ended</th><th>Type</th><th>By</th><th>Source</th><th>On register</th><th>Safe</th><th>Missing</th><th>Not seen</th><th>All accounted after</th></tr>
+      ${list.map(rc => `<tr><td>${esc(fmtWhen(rc.startedAt))}</td><td>${rc.endedAt ? esc(fmtWhen(rc.endedAt)) : '<b>open</b>'}</td><td>${rc.drill ? 'drill' : '<b>roll call</b>'}</td><td>${esc(rc.startedBy || '')}</td><td>${esc(rc.source || '')}</td><td>${rc.total}</td><td>${rc.safe}${rc.selfMarked ? ' <small class="muted">(' + rc.selfMarked + ' self)</small>' : ''}</td><td>${rc.missing}</td><td>${rc.unaccounted}</td><td>${rc.allSafeAt ? Math.max(1, Math.round((Date.parse(rc.allSafeAt) - Date.parse(rc.startedAt)) / 60000)) + ' min' : '—'}</td></tr>`).join('')}</table>
       <p class="muted" style="margin-top:8px">Reload the page to return to the event log.</p>`;
     } catch (error) { showError(error); }
 };
 
 load();
+$('#askForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const q = $('#askQ').value.trim(); if (!q) return;
+    $('#askState').textContent = 'thinking…'; $('#askA').textContent = '';
+    try {
+        const r = await api('POST', '/api/ask', { question: q });
+        $('#askA').textContent = r.answer;
+        $('#askState').textContent = `${r.model} · looked up: ${r.toolCalls.map(t => t.name).join(', ') || 'nothing'}`;
+    } catch (error) { $('#askState').textContent = ''; $('#askA').textContent = error.message; }
+};
+$('#atForm').onsubmit = async (e) => {
+    e.preventDefault();
+    if (!$('#atWhen').value) return;
+    try {
+        const r = await api('GET', `/api/register?at=${encodeURIComponent(new Date($('#atWhen').value).toISOString())}`);
+        $('#atList').innerHTML = r.onSite.length ? r.onSite.map(p => `<div class="visitor-row"><span><b>${esc(p.name)}</b> <small class="muted">${p.type} · in since ${esc(fmtWhen(p.since))} · ${esc(p.source || '')}</small></span></div>`).join('') : '<p class="muted">Nobody was signed in at that moment.</p>';
+    } catch (error) { showError(error); }
+};
 // Live: refresh when the register changes (not while the PIN form or the roll-call history table is showing).
 SI.live(() => { if (!$('#pinPanel').offsetParent && !showingHistory) load(); }, { fallbackMs: 60_000, debounceMs: 1000 });

@@ -1,4 +1,4 @@
-# eRIGHT Sign-In v3.7 — staff & visitor register with fire roll call
+# eRIGHT Sign-In v4.0 — staff & visitor register with fire roll call
 
 Small LAN system for a single door: 8 staff, visitors, and — because eRIGHT has **no designated
 fire marshal** — a register that anyone at the assembly point can open on a phone and that is
@@ -57,10 +57,42 @@ The original one-file JSON version is preserved in git history (`git show 6eab63
 | `a7b09ac`…`f09c953` | 2026-09-27 | PN532 arrived; WIRING.md/.html with photos; **first real cards read** (back-door reader) |
 | `6558a2f` `de10b26` | 2026-09-27 | **v3.4–3.6 Presence**: Wi-Fi brace (UniFi client list) + BLE brace (key tags heard by door/anchor scanners), direction from scanner sequence, auto sign-in, badge-not-act on absence, auto sign-out only when inference undoes inference and both braces agree; ESP32 firmware BLE scan; Pi BLE scanner; enrolment pickers. **Live on CT 106 21:35Z** via `deploy/upgrade-ct106.sh` |
 | `5e0b842` | 2026-10-19 | **v3.7 audit fixes + foundations + device tokens + admin sessions + live screens** — see "v3.7: audit fixes and foundations". **Live on CT 106 18:30Z** |
+| (this commit) | 2026-10-19 | **v4.0** — route table, event-sourced attendance, persisted sessions, drills, self-marking, offline fire page, Microsoft List sink, retention, register assistant, `signinctl`, firmware NVS queue — see "v4.0" |
 
 Home: `https://github.com/otherlands/SigninApp` (remote `fork` in the development clone). The original
 `tobygladman2/SigninApp` was disconnected from the development clone on 2026-10-19 and is no longer updated.
 Developed for eRIGHT Ltd, 8 staff, one door.
+
+## v4.0 (2026-10-19)
+
+Built from the second full audit. Decisions were put to Alan as nine questions on 2026-10-19; the answers, and the
+facts checked against them, are recorded here so nothing below is assumed.
+
+| Question | Answer | What was checked | What v4.0 does |
+| --- | --- | --- | --- |
+| HTTPS | A real name: **signin.eright.co.uk** | **Does not exist in public DNS** (eright.co.uk is on GoDaddy nameservers ns13/ns14.domaincontrol.com). Inside the LAN the UniFi gateway answers **192.168.101.168 — a host that does not exist** (no ping, no ports). Nothing listens on 80/443 on CT 106. Public address seen from the office: 46.37.62.121. | Native TLS in the server (`TLS_CERT_FILE`/`TLS_KEY_FILE`/`TLS_PORT`, HTTP stays), `deploy/Caddyfile` + `deploy/install-caddy.sh` for the name, ready to run **after** the A record / port-forward (or DNS-01) and the LAN DNS fix exist. **Not enabled on CT 106**: with nothing resolving it would only break the kiosk and QR codes. `PUBLIC_URL` stays the LAN address until the name works. |
+| Event-sourced core | Yes, in place (strangler) | — | The `events` table is the **write-path truth for attendance**: every `in`/`out` updates the `attendance_current` projection (and the visitor row) in the same transaction. "Who is in" is one read. `POST /api/projections/rebuild` refolds from the log and reports drift; `GET /api/register?at=` is time travel ("who was in at 14:32"). People, expected visitors, devices and settings stay as reference tables (they are not the register). Roll-call marks keep their table for now. |
+| Off-site ticking | **Microsoft List** via Graph; Alan creates the Entra app registration | `SP_*` still unset on CT 106 | `lib/mslist.js`: one list, one row per person on site + a `_status` row, patched/added/deleted to match on every change (`SP_LIST` + the SP_* vars). Pinned against a fake Graph; **not yet run against the real tenant**. Editing rows there to tick people is the next step once the tenant exists. |
+| Phones off Wi-Fi | Yes, via signin.eright.co.uk | see HTTPS: not true today | **Self-marking built anyway**: the Teams start card's first button is **"I'm SAFE"** → `/safe`; the phone remembers who you are (same as `/tap`) and one press marks you SAFE (`via: self`, counted separately, shown as "(n by phone)"). Works wherever the phone can reach `PUBLIC_URL`; the page says so plainly when it cannot. Per-person Teams messages are impossible with the webhook. |
+| Retention | "all 6 years" | Interpreted as visitor details + events + roll calls; presence sightings keep their documented 14 days (6 years of 30-second sightings would be tens of millions of rows). **Correct this if wrong.** | `RETENTION_DAYS=2190` on CT 106: visitors older than that are anonymised (row kept for counts; name/company/vehicle/host and their event lines blanked), events and finished roll calls deleted, each subject's current-state event kept so the projection never dangles. Runs 6-hourly, logged as an `admin` event, refuses values under 30 days. Nothing on CT 106 is old enough to be touched before 2032. |
+| External names | Keep stable | — | `/fire`, event kinds, CSV columns and every existing metric name unchanged. `/rollcall` is an alias. |
+| ESP32 | On the lead | **Only Bluetooth serial ports on this PC** — no ESP32 attached | Firmware v4 **compiled** (RAM 15.6 %, flash 29.8 %): tap queue persisted in NVS so a power cut keeps taps; fire-confirm LED no longer blocks the loop. Flash with `pio run -t upload --upload-port COMxx` from `firmware/door-reader`. |
+| Deploy | Same as v3.7 | — | see "Where things stand" |
+| Local LLM Q&A | Yes | This PC's `127.0.0.1:8080` is not reachable from CT 106. **fast-a (192.168.102.120:11434, Ollama) is**, and of its models only `Qwen2.5-Coder-7B-Instruct` accepts tools (as text, not structured; qwen2.5vl:3b and the Qwen3.5 GGUFs refuse `tools`). | `lib/assistant.js` + Admin → **Ask the register**: admin-only, every question audited, the model gets **only tool results** (who is on site, register at an instant, a person's timeline, roll calls, daily counts), times pre-formatted in local words, nothing leaves the LAN. Handles structured and text-form tool calls. `LLM_URL`/`LLM_MODEL` set on CT 106 to fast-a. Answers are only as good as a 7B model; the tool-call trail is shown under every answer. |
+
+Also in v4.0:
+
+- **Declarative routes** (`lib/router.js`, `lib/routes.js`): every route states `auth` (`public` · `admin` · `mirror` · `claim:<scope>` · `device:<scope>`), `mutates` (refused on a replica before the handler) and `notify`; the app applies them, so a guard cannot be forgotten. `GET /api/routes` (admin) lists the table; a test asserts the whole matrix. `app.js` fell from 970 to ~600 lines and contains no routing.
+- **Admin sessions persist** (`admin_sessions`, hashed): an upgrade or restart no longer logs admins out; audit lines name the session. **Runtime state** (Teams/SharePoint/backup status, replica roster, unknown card) moved out of `settings` into `runtime_state`; backups drop it.
+- **Offline fire page**: `public/sw.js` caches the page and the last register; `fire.js` keeps SAFE/MISSING ticks made while the server is unreachable and replays them when it returns ("n ticks waiting"). Proven with the server process killed: page opens, shows the last register, accepts a tick, delivers it on restart. The service worker only installs on HTTPS or localhost; on CT 106's plain HTTP the page behaves as before until HTTPS exists.
+- **Drills**: "Start a DRILL" on the fire page or `signinctl drill`; cards say DRILL, history shows drills, self-marks and **time to all-accounted** (`allSafeAt`); `signin_rollcall_drill`, `signin_rollcall_self_marked` on `/metrics`.
+- **Fire-notice acknowledgement recorded** with the notice version (`fireNoticeVersion`) on each visitor arrival.
+- **`bin/signinctl`** (`npm run ctl -- …` or install on the server): `status`, `check-config`, `backup`, `verify <file>`, `restore <file> --yes`, `people`, `token`, `revoke`, `drill`, `ask`, `rebuild-projections`, `retention`.
+- **`.gitattributes`**: shell/Python/service files stay LF on Windows checkouts (a CRLF script had slipped through).
+- Tests: 55 (`test/v4.test.js` adds the auth matrix, projection fold/rebuild/time-travel, v3.7→v4 migration on a real-shaped database, session persistence, drills + self-marking + cards, acknowledgement versioning, retention, the List sink against a fake Graph, the assistant with both tool-call forms, native TLS with a real certificate, and the review fixes below). A copy of the **live CT 106 database** was migrated v5→v9 before deploying: zero projection drift against its event log, and its register agreed with the running v3.7 server.
+- **Independent review before deploy** found four defects in the v4 code, all fixed and pinned by tests: a tick queued offline could have been replayed onto a *later* roll call (ticks now carry the roll-call id and the server refuses a mismatch); a reader tap restored from flash after a power cut was replayed as "just happened" and could toggle someone out (restored taps are now recorded as `unknown_time_tap`, note only, never applied); `signinctl restore` could leave an empty register if the copy failed (copy-in-then-rename, old file restored on failure); retention anonymised visitors who were still signed in (only signed-out visitors are anonymised).
+
+**Open on the estate side** (nothing in code can do these): the `signin.eright.co.uk` A record or DNS-01 token and the 80/443 forward; the UniFi LAN DNS record (point it at .102); the Entra app registration for `SP_*` + `SP_LIST`; flashing the reader; a drill to try "I'm SAFE" from real phones.
 
 ## v3.7: audit fixes and foundations (2026-10-19)
 
@@ -158,6 +190,7 @@ On a Proxmox/Ubuntu VM, follow **"Install on Ubuntu, step by step"** below — i
 | `/visitor` | Visitor at the tablet | **Expected today — tap your name** (pre-registered visitors arrive with one tap: name, company, host already filled) or the full form: name, company, who they're visiting, vehicle reg, fire-notice tick box. Issues a daily badge number. |
 | `/fire` | Anyone's phone, any LAN device | Live "who is on site". **START ROLL CALL** freezes the register at that instant; then SAFE / MISSING per person with the ticker's name and time; counts of safe / missing / not yet seen; the banner turns **green "ALL n ACCOUNTED FOR"** the moment every person on the frozen register is marked SAFE; END writes a summary event. The live view says **LONE WORKER** when exactly one member of staff is on site with no visitors. If the server dies mid-fire the page shows the last register **that device** saw, clearly labelled — a fallback only, not relied on (see SharePoint). Print-friendly. |
 | `/admin` | Manager's PC | Add/remove staff, assign card UIDs, close forgotten sign-outs, sign visitors out, **pre-register expected visitors** (next 14 days, shows who has arrived), company name, fire notice, event log, CSV export, roll-call history, off-site copy + Teams status. Optional PIN. |
+| `/safe` | Staff phone (from the Teams card's "I'm SAFE" button or a home-screen shortcut) | One press marks **you** SAFE on the open roll call (`via: self`). Says plainly when the server cannot be reached. v4. |
 | `/tap` | Staff phone via NFC sticker | The original SigninApp's zero-hardware path: sticker URL → phone remembers who you are → each tap toggles you. |
 
 ## Run
@@ -179,6 +212,10 @@ Environment variables (all optional):
 | `MIRROR_URL`, `MIRROR_TOKEN` | main server pushes a roster snapshot to the mirror after every change (queued in SQLite, retried every 15 s). |
 | `REPLICA=1` | this instance is the read-only mirror. Serves `/fire` from the last snapshot and can run its own roll call. Refuses sign-ins. Needs `MIRROR_TOKEN` (refuses to start without it). |
 | `BACKUP_DIR`, `BACKUP_KEEP`, `BACKUP_HOUR` | nightly backups: directory (default `data/backups`; empty = off), how many to keep (30), local hour (2). |
+| `RETENTION_DAYS` | anonymise visitor details and delete events/roll calls older than this (v4; 2190 on CT 106; empty = keep forever, warned; < 30 refused). |
+| `LLM_URL`, `LLM_MODEL` | read-only register assistant: an OpenAI-compatible `/v1` on the LAN and a model that accepts tools (v4). |
+| `SP_LIST` | with the `SP_*` app registration: a Microsoft List kept in step with the register (v4). |
+| `TLS_CERT_FILE`, `TLS_KEY_FILE`, `TLS_PORT` | native HTTPS alongside HTTP (v4), default port 3443. Or put Caddy in front: `deploy/Caddyfile`. |
 | `LOG_FORMAT` | `text` (default) or `json` (one object per line). |
 | `TZ_NAME` | IANA zone for "today" and CSV times, default `Europe/London`. |
 | `TEAMS_WEBHOOK_URL` | **Teams channel push** — a Workflows webhook URL. Roll-call start, all-safe and end are posted as Adaptive Cards within seconds (queued in SQLite, retried every 15 s for up to an hour). See "Teams channel". |
@@ -680,6 +717,9 @@ flowchart LR
 | GET | `/metrics` | Prometheus text exposition, **counts only — no names** (see "Estate integration"). No PIN or token: it is meant to be scraped. |
 | GET | `/api/state` | full kiosk state incl. `loneWorker`, `expectedToday`, `publicUrl` |
 | GET | `/api/roster` | who is on site now (staff + visitors) + `loneWorker` (exactly one staff, no visitors) |
+| GET | `/api/register?at=` | admin: time travel — who was signed in at that instant, folded from the event log (v4) |
+| GET | `/api/me?personId=` | self-marking page state (v4) |
+| GET | `/api/routes` | admin: the route table with each route's auth (v4) |
 | GET | `/api/stream` | Server-Sent Events: `hello` on connect, `change` `{seq}` whenever the register changes. No PIN (same trust as `/api/state`). |
 | POST | `/api/admin/login` | `{pin}` → 200 + `si_admin` HttpOnly cookie (12 h); 401 wrong PIN; 429 locked out. `POST /api/admin/logout` ends it |
 | POST | `/api/sign` | `{personId}` or `{cardUid}` (card UIDs always need a token with the `sign` scope); optional `direction:"in"|"out"`, `eventKey`, `source`, `device` (ignored when a device token names the device), `note`; devices only: `ageMs` (how long ago a buffered tap happened, ≤ 12 h) |
@@ -694,11 +734,11 @@ flowchart LR
 | POST | `/api/presence/poll` | admin: force one UniFi poll now → `{at, ok, count|error}` |
 | PATCH | `/api/people/:id` | also accepts `phoneMac`, `tagId` (409 if owned by someone else; `""` clears) |
 | GET | `/api/fire` | open roll call (with marks) + live roster |
-| POST | `/api/fire/start` | `{source, by?}` → 201, or 200 `alreadyOpen` |
-| POST | `/api/fire/mark` | `{subjectType:"staff"|"visitor", subjectId, status:"safe"|"missing"|"clear", by?}` |
+| POST | `/api/fire/start` | `{source, by?, drill?}` → 201, or 200 `alreadyOpen` |
+| POST | `/api/fire/mark` | `{subjectType:"staff"|"visitor", subjectId, status:"safe"|"missing"|"clear", by?, via?:"self"}` (`self` may only say safe) |
 | POST | `/api/fire/end` | `{by?}` |
 | POST | `/api/mirror` | replica intake, `{type:"roster", roster}` |
-| admin | `/api/people` (GET/POST), `/api/people/:id` (PATCH name/cardUid/active, DELETE), `PUT /api/company`, `PUT /api/fire-notice`, `POST /api/stale/close` (`{personId?}` / `{visitorId?}` / all → `{closed, skipped}`; "all" skips staff whose phone or tag is seen inside), `GET /api/events`, `GET /api/export?from&to`, `GET /api/fire/history`, `GET /api/visitors/history`, `POST /api/mirror/flush`, `POST /api/backup` (back up now), `GET /api/devices`, `POST /api/devices` `{name, role, scopes:["sign"|"presence"|"fire"]}` → 201 `{device, token}` (token shown once), `DELETE /api/devices/:id` (revoke) | |
+| admin | `/api/people` (GET/POST), `/api/people/:id` (PATCH name/cardUid/active, DELETE), `PUT /api/company`, `PUT /api/fire-notice`, `POST /api/stale/close` (`{personId?}` / `{visitorId?}` / all → `{closed, skipped}`; "all" skips staff whose phone or tag is seen inside), `GET /api/events`, `GET /api/export?from&to`, `GET /api/fire/history`, `GET /api/visitors/history`, `POST /api/mirror/flush`, `POST /api/backup` (back up now), `GET /api/devices`, `POST /api/devices` `{name, role, scopes:["sign"|"presence"|"fire"]}` → 201 `{device, token}` (token shown once), `DELETE /api/devices/:id` (revoke), `GET /api/people/:id/timeline`, `POST /api/projections/rebuild`, `POST /api/retention/run`, `POST /api/ask` `{question}` (v4) | |
 
 ## Estate integration — the register on eRIGHT's monitoring rails (v3.2)
 

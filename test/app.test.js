@@ -207,7 +207,8 @@ test('stale sign-ins are flagged, never auto-closed, and admin can close them', 
         assert.equal(r.json.closed, 1);
         assert.equal(r.json.state.inCount, 0);
         r = await call('GET', '/api/events');
-        assert.match(r.json[0].note, /Forgotten sign-out closed by admin \(Admin\)/);
+        assert.match(r.json.find(e => e.kind === 'out').note, /Forgotten sign-out closed by admin \(Admin\)/);
+        assert.match(r.json[0].note, /forgotten sign-outs closed: Forgetful/, 'and the admin action itself is audited');
     } finally { await close(); }
 });
 
@@ -359,7 +360,9 @@ test('Teams webhook: start / all-safe / end cards are posted in order, seconds a
         assert.equal(card.type, 'AdaptiveCard');
         assert.match(card.body[0].text, /FIRE ROLL CALL STARTED/);
         assert.equal(card.body[0].color, 'attention');
-        assert.equal(card.actions[0].url, 'http://signin.example:3000/fire');
+        assert.equal(card.actions[0].title, "I'm SAFE");
+        assert.equal(card.actions[0].url, 'http://signin.example:3000/safe');
+        assert.equal(card.actions[1].url, 'http://signin.example:3000/fire');
         assert.ok(card.body.some(b => b.type === 'FactSet' && b.facts.some(f => f.title === 'Started by' && f.value === 'Alan')));
         assert.ok(card.body.some(b => b.type === 'FactSet' && b.facts.some(f => f.title === 'Who' && f.value === 'Only Person')), 'start card names who is on the register');
 

@@ -149,6 +149,7 @@ test('presence: BLE tags, door->anchor = walked in, anchor->door->silence + phon
         assert.equal(r.json.event.kind, 'in');
         // fabricate the card event's time into "the day after" so the presence timeline is consistent
         app.store.db.prepare('UPDATE events SET at = ? WHERE id = ?').run(at(D).toISOString(), r.json.event.id);
+        app.store.rebuildProjections();   // the attendance projection is folded from events; a hand edit needs a refold
         app.presence.ingestBle('anchor', [{ tag: 'ibeacon:e2c5-1', at: at(D + 60).toISOString() }], at(D + 60));
         app.presence.ingestBle('back-door', [{ tag: 'ibeacon:e2c5-1', at: at(D + 61).toISOString() }], at(D + 61));
         await app.presence.pollWifi(at(D + 62));

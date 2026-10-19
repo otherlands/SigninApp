@@ -126,6 +126,24 @@
 
         <section class="panel" style="grid-column:1/-1">
             <div class="row" style="justify-content:space-between">
+                <h2>Ask the register</h2>
+                <span class="muted" id="askState"></span>
+            </div>
+            <p class="muted">Plain-English questions answered by a model on the estate's own server, from the register only
+                (it can look up who is in, who was in at a time, a person's history, roll calls and daily counts; it cannot
+                change anything and nothing leaves the LAN). Every question is logged.</p>
+            <form id="askForm" class="row"><input id="askQ" class="grow" maxlength="500"
+                    placeholder="e.g. Who was on site last Tuesday at 2pm? · How many visitors in October? · When did Toby last sign in?"><button
+                    class="primary">Ask</button></form>
+            <div id="askA" class="muted" style="margin-top:10px;white-space:pre-wrap"></div>
+            <h3 class="muted" style="font-size:.85rem;margin-top:14px">Who was in at…</h3>
+            <form id="atForm" class="row"><input id="atWhen" type="datetime-local" style="min-height:44px;padding:8px;width:auto"><button
+                    class="small">Look up</button></form>
+            <div id="atList" style="margin-top:8px"></div>
+        </section>
+
+        <section class="panel" style="grid-column:1/-1">
+            <div class="row" style="justify-content:space-between">
                 <h2>Log</h2>
                 <div class="row">
                     <input type="date" id="from" style="min-height:44px;padding:8px;width:auto">

@@ -73,6 +73,20 @@ ANCHOR_SCANNERS=anchor
 #BACKUP_HOUR=2
 # LOG_FORMAT=json for one JSON object per log line
 #LOG_FORMAT=text
+# ---- v4 ----
+# Data retention (UK GDPR): visitor name/company/vehicle anonymised and events/roll calls deleted after this many days
+# (presence sightings keep their own 14 days). Decision recorded 2026-10-19: 6 years. Empty = keep forever (warned).
+RETENTION_DAYS=2190
+# Read-only register assistant (Admin -> Ask the register): any OpenAI-compatible chat endpoint on the LAN.
+# fast-a's Ollama, verified 2026-10-19; this model accepts tools (as text) — qwen2.5vl and Qwen3.5 GGUFs there do not.
+#LLM_URL=http://192.168.102.120:11434/v1
+#LLM_MODEL=hf.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M
+# Microsoft List kept in step with the register (readable/editable on phones with the building dark). Needs the SP_* app registration.
+#SP_LIST=Sign-in register
+# Native TLS (alternative to Caddy): PEM files; HTTP stays on PORT as well.
+#TLS_CERT_FILE=
+#TLS_KEY_FILE=
+#TLS_PORT=3443
 EOF
   chmod 600 "$ENVF"
   echo "  WRITTEN $ENVF — the generated ADMIN_PIN is $PIN and API_TOKEN is $TOK. Record them now; they are not printed again."

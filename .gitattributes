@@ -1,0 +1,18 @@
+# Scripts that run on Linux boxes must stay LF whatever Windows git does.
+*.sh text eol=lf
+*.py text eol=lf
+*.service text eol=lf
+Caddyfile text eol=lf
+bin/* text eol=lf
+*.html text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.cpp text eol=lf
+*.h text eol=lf
+*.ini text eol=lf
+*.jpg binary
+.gitattributes text eol=lf
+

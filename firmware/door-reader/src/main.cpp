@@ -45,17 +45,21 @@ static unsigned long fireRequestedAt = 0;
 static unsigned long lastFireAttempt = 0;
 
 // Card taps that could not be delivered (no Wi-Fi / server down / 5xx) wait here and are replayed in order with
-// "ageMs" so the server records when the tap really happened. eventKey makes replays idempotent.
+// "ageMs" so the server records when the tap really happened. eventKey makes replays idempotent. The queue is
+// mirrored into NVS (Preferences) so a power cut does not lose a tap; ages are measured from boot after a restore,
+// which under-states them (the server caps ageMs at 12 h anyway) — honest enough, and better than losing the tap.
 struct PendingTap
 {
     String uid;
     uint32_t key;
     unsigned long at;
+    bool restored; // came back from flash after a reboot: its real time is unknown, so the server must not toggle on it
 };
 #define TAP_QUEUE_LEN 16
 static PendingTap tapQueue[TAP_QUEUE_LEN];
 static int tapHead = 0, tapCount = 0;
 static unsigned long lastTapRetry = 0;
+static unsigned long fireLedUntil = 0;   // non-blocking "roll call confirmed" red
 
 enum Led
 {
@@ -196,11 +200,50 @@ String uidToHex(const uint8_t *uid, uint8_t len)
 // POST one tap. Returns the HTTP status (-1 = not sent).
 int sendTap(const PendingTap &t)
 {
-    String body = "{\"cardUid\":\"" + t.uid + "\",\"source\":\"esp32\",\"device\":\"" DEVICE_NAME "\",\"eventKey\":\"" DEVICE_NAME "-" + String(t.key) + "\",\"ageMs\":" + String(millis() - t.at) + "}";
+    // A restored tap has no trustworthy age: it is sent flagged so the server records that the card WAS tapped
+    // while the reader was cut off, without guessing whether that meant in or out against today's register.
+    String body = "{\"cardUid\":\"" + t.uid + "\",\"source\":\"esp32\",\"device\":\"" DEVICE_NAME "\",\"eventKey\":\"" DEVICE_NAME "-" + String(t.key) + "\",\"ageMs\":" + String(t.restored ? 12UL * 3600UL * 1000UL : millis() - t.at) + (t.restored ? ",\"restored\":true" : "") + "}";
     return postJson("/api/sign", body);
 }
 // Worth retrying: never sent, or the server failed. A 4xx (unknown card, bad token) will not improve with time.
 bool retryable(int status) { return status <= 0 || status >= 500; }
+
+// NVS mirror of the queue: "q" = "uid:key,uid:key,..." (16 entries max, well under the 4000-byte Preferences limit).
+void saveQueue()
+{
+    String s;
+    for (int i = 0; i < tapCount; i++)
+    {
+        const PendingTap &t = tapQueue[(tapHead + i) % TAP_QUEUE_LEN];
+        s += (i ? "," : "") + t.uid + ":" + String(t.key);
+    }
+    prefs.putString("q", s);
+}
+void loadQueue()
+{
+    String s = prefs.getString("q", "");
+    tapHead = tapCount = 0;
+    int start = 0;
+    while (start < (int)s.length() && tapCount < TAP_QUEUE_LEN)
+    {
+        int comma = s.indexOf(',', start);
+        if (comma < 0)
+            comma = s.length();
+        String item = s.substring(start, comma);
+        int colon = item.indexOf(':');
+        if (colon > 0)
+        {
+            tapQueue[tapCount].uid = item.substring(0, colon);
+            tapQueue[tapCount].key = item.substring(colon + 1).toInt();
+            tapQueue[tapCount].at = millis();
+            tapQueue[tapCount].restored = true;
+            tapCount++;
+        }
+        start = comma + 1;
+    }
+    if (tapCount)
+        LOG("[tap] %d tap(s) restored from flash, will be sent when the server answers\n", tapCount);
+}
 
 void queueTap(const PendingTap &t)
 {
@@ -211,6 +254,7 @@ void queueTap(const PendingTap &t)
     }
     tapQueue[(tapHead + tapCount) % TAP_QUEUE_LEN] = t;
     tapCount++;
+    saveQueue();
     LOG("[tap] queued %s (%d waiting)\n", t.uid.c_str(), tapCount);
 }
 
@@ -219,14 +263,18 @@ void drainTapQueue()
     if (!tapCount || WiFi.status() != WL_CONNECTED || millis() - lastTapRetry < 5000)
         return;
     lastTapRetry = millis();
+    bool changed = false;
     while (tapCount)
     {
         int status = sendTap(tapQueue[tapHead]);
         if (retryable(status))
-            return;
+            break;
         tapHead = (tapHead + 1) % TAP_QUEUE_LEN;
         tapCount--;
+        changed = true;
     }
+    if (changed)
+        saveQueue();
 }
 
 void handleCard(const String &uid)
@@ -237,7 +285,7 @@ void handleCard(const String &uid)
     lastUidAt = millis();
     eventCounter++;
     prefs.putUInt("counter", eventCounter);
-    PendingTap t = {uid, eventCounter, millis()};
+    PendingTap t = {uid, eventCounter, millis(), false};
     // Keep order: while older taps are waiting, a new one joins the back of the queue.
     int status = tapCount ? -1 : sendTap(t);
     if (retryable(status))
@@ -279,9 +327,7 @@ void serviceFire()
     if (status >= 200 && status < 300)
     {
         firePending = false;
-        led(LED_FIRE);
-        delay(3000);
-        led(LED_IDLE);
+        fireLedUntil = millis() + 3000; // steadyLed shows solid red until then; the loop keeps running
     }
 }
 
@@ -396,6 +442,7 @@ void setup()
     pinMode(PIN_FIRE_BUTTON, INPUT_PULLUP);
     prefs.begin("door", false);
     eventCounter = prefs.getUInt("counter", 0);
+    loadQueue();
 
     if (HAS_PN532)
     {
@@ -414,6 +461,8 @@ void steadyLed()
 {
     if (firePending)
         led((millis() / 250) % 2 ? LED_FIRE : LED_OFF);
+    else if (millis() < fireLedUntil)
+        led(LED_FIRE);
     else if (WiFi.status() != WL_CONNECTED)
         led(LED_NOWIFI);
     else if (HAS_PN532 && !nfcReady)
