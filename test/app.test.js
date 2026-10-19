@@ -47,8 +47,10 @@ test('staff toggle in/out, roster count and CSV export', async () => {
         assert.match(r.headers.get('content-type'), /text\/csv/);
         const lines = r.text.split('\r\n');
         assert.equal(lines[0], 'Date,Time,Type,Name,Action,Source,Device,Note');
-        assert.equal(lines.length, 3);
-        assert.match(lines[1], /"staff","Alan Meade","in","kiosk","test"/);
+        const staffLines = lines.filter(l => l.includes('"staff"'));
+        assert.equal(staffLines.length, 2);
+        assert.match(staffLines[0], /"staff","Alan Meade","in","kiosk","test"/);
+        assert.ok(lines.some(l => /"admin","admin",.*"person added: Alan Meade"/.test(l)), 'admin changes are in the log too');
     } finally { await close(); }
 });
 
@@ -290,7 +292,7 @@ test('/metrics exposes counts only: lone worker, roll call, all-safe, off-site c
         assert.match(r.text, /^signin_local_hour (\d|1\d|2[0-3])$/m);
         assert.match(r.text, /^signin_sharepoint_configured 0$/m);
         assert.doesNotMatch(r.text, /signin_sharepoint_last_push/, 'no push yet = no series, not a fake 0');
-        assert.match(r.text, /^signin_info\{version="3\.6\.0",tz="Europe\/London"\} 1$/m);
+        assert.match(r.text, new RegExp(`^signin_info\\{version="${require('../package.json').version.replaceAll('.', '\\.')}",tz="Europe/London"\\} 1$`, 'm'));
 
         r = await call('POST', '/api/people', { name: 'Alone Person' }, H);
         const p = r.json.people[0];

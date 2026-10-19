@@ -7,7 +7,7 @@ identities. Mirrors the ESP32 firmware's tag format exactly so a tag is the same
     ibeacon:<UUID>:<major>:<minor>      or      mac:AA:BB:CC:DD:EE:FF
 
 Env:  SIGNIN_URL (default http://192.168.101.102:3000)  SIGNIN_TOKEN (API_TOKEN)  SCANNER_NAME (default front-door)
-      POST_S (default 5)
+      POST_S (default 5)  SCAN_MODE (default active; "passive" needs BlueZ >= 5.56 with experimental features on)
 Deps: pip install bleak   (BlueZ on the Pi; run as a user in the `bluetooth` group or as root via systemd)
 Not yet run on real hardware (written 2026-09-27); the Pi kiosk parts are on order.
 """
@@ -22,6 +22,7 @@ URL = os.environ.get("SIGNIN_URL", "http://192.168.101.102:3000").rstrip("/")
 TOKEN = os.environ.get("SIGNIN_TOKEN", "")
 NAME = os.environ.get("SCANNER_NAME", "front-door")
 POST_S = float(os.environ.get("POST_S", "5"))
+SCAN_MODE = os.environ.get("SCAN_MODE", "active").strip().lower()
 APPLE = 0x004C
 
 seen: dict[str, int] = {}          # tag -> strongest rssi this window
@@ -61,9 +62,20 @@ def post():
     except Exception as e:
         print(f"[{time.strftime('%FT%TZ', time.gmtime())}] post failed: {e}", flush=True)
 
+def make_scanner():
+    """Active scanning works on every BlueZ. bleak refuses passive scanning on Linux unless it is given or_patterns
+    (BlueZ advertisement monitors), so passive mode matches iBeacon frames and the common LE flags values."""
+    if SCAN_MODE != "passive":
+        return BleakScanner(on_adv)
+    from bleak.backends.bluezdbus.advertisement_monitor import OrPattern
+    from bleak.backends.bluezdbus.scanner import BlueZScannerArgs
+    patterns = [OrPattern(0, 0xFF, b"\x4c\x00\x02\x15")]                               # Apple iBeacon
+    patterns += [OrPattern(0, 0x01, bytes([flags])) for flags in (0x02, 0x04, 0x06, 0x1A)]  # fixed-address beacons
+    return BleakScanner(on_adv, scanning_mode="passive", bluez=BlueZScannerArgs(or_patterns=patterns))
+
 async def main():
-    print(f"[{time.strftime('%FT%TZ', time.gmtime())}] ble-scanner '{NAME}' -> {URL} every {POST_S}s", flush=True)
-    scanner = BleakScanner(on_adv, scanning_mode="passive")
+    print(f"[{time.strftime('%FT%TZ', time.gmtime())}] ble-scanner '{NAME}' -> {URL} every {POST_S}s ({SCAN_MODE} scan)", flush=True)
+    scanner = make_scanner()
     await scanner.start()
     last_status = time.time()
     try:

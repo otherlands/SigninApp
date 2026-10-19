@@ -1,0 +1,64 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    name: server tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['22.13', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # No dependencies to install: the server is Node built-ins only.
+      - run: npm test
+      - name: config check accepts a sane production env
+        run: node --disable-warning=ExperimentalWarning server.js --check-config
+        env:
+          ADMIN_PIN: '123456'
+          API_TOKEN: ci-token-ci-token-ci-token
+      - name: config check rejects a bad one
+        run: "! node --disable-warning=ExperimentalWarning server.js --check-config"
+        env:
+          TZ_NAME: Not/AZone
+
+  firmware:
+    name: door-reader firmware builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            firmware/door-reader/.pio
+          key: pio-${{ hashFiles('firmware/door-reader/platformio.ini') }}
+      - run: pip install platformio
+      # config.h holds Wi-Fi + token secrets and is git-ignored; the example compiles the same code paths.
+      - run: cp firmware/door-reader/include/config.example.h firmware/door-reader/include/config.h
+      - run: pio run
+        working-directory: firmware/door-reader
+
+  scripts:
+    name: Pi scanner + shell scripts parse
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m py_compile deploy/kiosk-pi/ble-scanner.py
+      - run: for f in deploy/*.sh deploy/kiosk-pi/install.sh; do bash -n "$f"; done

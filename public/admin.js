@@ -39,13 +39,21 @@ function render(data) {
     }));
 
     const stale = data.people.filter(p => p.stale);
-    $('#staleList').innerHTML = stale.length ? '' : '<p class="muted">None.</p>';
-    $('#closeStale').classList.toggle('hidden', !stale.length);
+    const staleVisitors = data.visitors.filter(v => v.stale);
+    $('#staleList').innerHTML = stale.length || staleVisitors.length ? '' : '<p class="muted">None.</p>';
+    $('#closeStale').classList.toggle('hidden', !stale.length && !staleVisitors.length);
     for (const p of stale) {
         const row = document.createElement('div'); row.className = 'visitor-row';
         row.innerHTML = `<span><b>${esc(p.name)}</b><br><small class="muted">in ${esc(sinceLabel(p.since))}</small></span>`;
         const b = document.createElement('button'); b.className = 'small'; b.textContent = 'Close';
         b.onclick = () => api('POST', '/api/stale/close', { personId: p.id, by: 'admin page' }).then(d => render(d.state)).catch(showError);
+        row.append(b); $('#staleList').append(row);
+    }
+    for (const v of staleVisitors) {
+        const row = document.createElement('div'); row.className = 'visitor-row';
+        row.innerHTML = `<span><b>${esc(v.name)}</b> (visitor, badge ${v.badge})<br><small class="muted">in ${esc(sinceLabel(v.signedInAt))}</small></span>`;
+        const b = document.createElement('button'); b.className = 'small'; b.textContent = 'Close';
+        b.onclick = () => api('POST', '/api/stale/close', { visitorId: v.id, by: 'admin page' }).then(d => render(d.state)).catch(showError);
         row.append(b); $('#staleList').append(row);
     }
 
@@ -128,7 +136,7 @@ async function loadEvents() {
     const events = await api('GET', '/api/events?limit=100');
     $('#events').replaceChildren(...events.map(e => {
         const item = document.createElement('div'); item.className = 'event';
-        const label = { in: 'signed in', out: 'signed out', fire_start: 'ROLL CALL STARTED', fire_end: 'ROLL CALL ENDED', safe: 'marked SAFE', missing: 'marked MISSING', unknown_card: 'unknown card' }[e.kind] || e.kind;
+        const label = { in: 'signed in', out: 'signed out', fire_start: 'ROLL CALL STARTED', fire_end: 'ROLL CALL ENDED', safe: 'marked SAFE', missing: 'marked MISSING', unknown_card: 'unknown card', admin: 'admin:' }[e.kind] || e.kind;
         item.innerHTML = `<span>${e.subjectName ? '<b>' + esc(e.subjectName) + '</b> ' : ''}${esc(label)}${e.subjectType === 'visitor' ? ' (visitor)' : ''} <small class="muted">· ${esc(e.source)}${e.device ? ' · ' + esc(e.device) : ''}${e.note ? ' · ' + esc(e.note) : ''}</small></span><time>${esc(fmtWhen(e.at))}</time>`;
         return item;
     }));
@@ -154,6 +162,9 @@ async function loadHealth() {
         parts.push('Teams channel: ' + (!t ? 'configured, nothing sent yet' : t.ok ? `<b style="color:var(--in)">ok</b> last post ${esc(fmtWhen(t.at))}` : `<b style="color:var(--amber)">FAILED</b> ${esc(fmtWhen(t.at))} — ${esc(t.error)} (retrying)`));
     } else parts.push('Teams channel: not configured (TEAMS_WEBHOOK_URL) — roll-call start / all-safe / end will not be pushed');
     parts.push(`Queued snapshots waiting: ${h.outbox}`);
+    if (!h.backup) parts.push('Backups: off (BACKUP_DIR empty)');
+    else if (!h.backup.last) parts.push('Backups: on, none taken yet (first one runs within the hour)');
+    else parts.push(`Backups: ${h.backup.last.ok ? '<b style="color:var(--in)">ok</b>' : '<b style="color:var(--amber)">FAILED</b> — ' + esc(h.backup.last.error || '')} at ${esc(fmtWhen(h.backup.last.at))}${h.backup.last.bytes ? ' (' + Math.round(h.backup.last.bytes / 1024) + ' KB)' : ''}${h.backup.last.offsite ? ' · off-site: ' + esc(h.backup.last.offsite) : ''}`);
     $('#offsiteState').innerHTML = parts.join('<br>');
 }
 
@@ -164,6 +175,7 @@ async function load() {
         await loadHealth();
         await loadExpected();
         await loadPresence();
+        await loadDevices();
         $('#pinPanel').classList.add('hidden');
     } catch (error) { showError(error); }
 }
@@ -175,11 +187,47 @@ $('#expectedForm').onsubmit = (e) => {
         .catch(showError);
 };
 
-$('#pinForm').onsubmit = (e) => { e.preventDefault(); adminPin.set($('#pin').value); load(); };
+$('#pinForm').onsubmit = (e) => {
+    e.preventDefault();
+    // Log in once: the server sets an HttpOnly session cookie, so the PIN is not kept in the browser.
+    api('POST', '/api/admin/login', { pin: $('#pin').value })
+        .then(() => { sessionStorage.removeItem('adminPin'); $('#pin').value = ''; load(); })
+        .catch(showError);
+};
+$('#logout').onclick = () => api('POST', '/api/admin/logout', {}).then(() => { sessionStorage.removeItem('adminPin'); location.reload(); });
+
+async function loadDevices() {
+    const list = await api('GET', '/api/devices');
+    $('#deviceList').replaceChildren(...(list.length ? list : [null]).map(d => {
+        const row = document.createElement('div'); row.className = 'visitor-row';
+        if (!d) { row.innerHTML = '<span class="muted">No per-device tokens yet: devices use the shared API_TOKEN.</span>'; return row; }
+        row.innerHTML = `<span><b>${esc(d.name)}</b> <span class="chip ${d.revokedAt ? '' : 'green'}">${d.revokedAt ? 'revoked' : esc(d.scopes.join(' · '))}</span><br>
+            <small class="muted">${esc(d.role)} · issued ${esc(fmtWhen(d.createdAt))} · ${d.lastSeenAt ? 'last used ' + esc(fmtWhen(d.lastSeenAt)) : 'never used'}${d.revokedAt ? ' · revoked ' + esc(fmtWhen(d.revokedAt)) : ''}</small></span>`;
+        if (!d.revokedAt) {
+            const b = document.createElement('button'); b.className = 'small ghost'; b.textContent = 'Revoke';
+            b.onclick = () => { if (confirm(`Revoke the token of ${d.name}? It stops working at once.`)) api('DELETE', `/api/devices/${d.id}`).then(loadDevices).catch(showError); };
+            row.append(b);
+        }
+        return row;
+    }));
+}
+$('#deviceForm').onsubmit = (e) => {
+    e.preventDefault();
+    const scopes = [...document.querySelectorAll('#deviceForm input[name=scope]:checked')].map(c => c.value);
+    api('POST', '/api/devices', { name: $('#devName').value, role: $('#devRole').value, scopes })
+        .then(d => {
+            $('#newToken').classList.remove('hidden');
+            $('#newToken').innerHTML = `Token for <b>${esc(d.device.name)}</b> — copy it now, it is not shown again:<br><code style="user-select:all;word-break:break-all">${esc(d.token)}</code>`;
+            $('#devName').value = ''; loadDevices();
+        })
+        .catch(showError);
+};
+
+let showingHistory = false;
 $('#personForm').onsubmit = (e) => { e.preventDefault(); api('POST', '/api/people', { name: $('#personName').value }).then(d => { render(d); $('#personName').value = ''; }).catch(showError); };
 $('#companyForm').onsubmit = (e) => { e.preventDefault(); api('PUT', '/api/company', { companyName: $('#companyName').value }).then(d => { render(d); notice(noticeEl, 'Saved.'); }).catch(showError); };
 $('#noticeForm').onsubmit = (e) => { e.preventDefault(); api('PUT', '/api/fire-notice', { fireNotice: $('#fireNotice').value }).then(d => { render(d); notice(noticeEl, 'Saved.'); }).catch(showError); };
-$('#closeStale').onclick = () => { if (confirm('Record a sign-out for every forgotten sign-in?')) api('POST', '/api/stale/close', { by: 'admin page' }).then(d => { render(d.state); loadEvents(); }).catch(showError); };
+$('#closeStale').onclick = () => { if (confirm('Record a sign-out for every forgotten sign-in?')) api('POST', '/api/stale/close', { by: 'admin page' }).then(d => { render(d.state); loadEvents(); notice(noticeEl, `Closed ${d.closed}.${d.skipped?.length ? ` Left signed in (phone or key tag seen inside now): ${d.skipped.join(', ')}.` : ''}`, false, 10000); }).catch(showError); };
 $('#useLastCard').onclick = () => { navigator.clipboard?.writeText(state.lastUnknownCard.uid); notice(noticeEl, `Copied ${state.lastUnknownCard.uid} — paste into a staff card box and press Enter.`); };
 $('#setCardToken').onclick = () => { const t = prompt('API_TOKEN value from the server (leave blank to clear):', localStorage.getItem('cardToken') || ''); if (t === null) return; if (t) localStorage.setItem('cardToken', t); else localStorage.removeItem('cardToken'); render(state); };
 $('#exportCsv').onclick = () => {
@@ -195,6 +243,7 @@ $('#rollcallHistory').onclick = async () => {
     try {
         const list = await api('GET', '/api/fire/history');
         if (!list.length) return notice(noticeEl, 'No roll calls recorded yet.');
+        showingHistory = true;
         $('#events').innerHTML = `<table><tr><th>Started</th><th>Ended</th><th>By</th><th>Source</th><th>On register</th><th>Safe</th><th>Missing</th><th>Not seen</th></tr>
       ${list.map(rc => `<tr><td>${esc(fmtWhen(rc.startedAt))}</td><td>${rc.endedAt ? esc(fmtWhen(rc.endedAt)) : '<b>open</b>'}</td><td>${esc(rc.startedBy || '')}</td><td>${esc(rc.source || '')}</td><td>${rc.total}</td><td>${rc.safe}</td><td>${rc.missing}</td><td>${rc.unaccounted}</td></tr>`).join('')}</table>
       <p class="muted" style="margin-top:8px">Reload the page to return to the event log.</p>`;
@@ -202,4 +251,5 @@ $('#rollcallHistory').onclick = async () => {
 };
 
 load();
-setInterval(() => { if (!$('#pinPanel').offsetParent) load(); }, 20000);
+// Live: refresh when the register changes (not while the PIN form or the roll-call history table is showing).
+SI.live(() => { if (!$('#pinPanel').offsetParent && !showingHistory) load(); }, { fallbackMs: 60_000, debounceMs: 1000 });

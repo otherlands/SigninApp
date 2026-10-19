@@ -32,7 +32,7 @@
         <h2>Visitor sign in</h2>
         <form id="visitorForm" autocomplete="off">
             <label>Your name<input id="name" required maxlength="80" autocapitalize="words"></label>
-            <label>Company<input id="company" maxlength="80"></label>
+            <label>Company<input id="visitorCompany" maxlength="80"></label>
             <label>Who are you visiting?<select id="host">
                     <option value="">— choose —</option>
                 </select></label>
@@ -95,7 +95,7 @@
             e.preventDefault();
             try {
                 const data = await api('POST', '/api/visitors', {
-                    name: $('#name').value, company: $('#company').value, hostId: $('#host').value, vehicle: $('#vehicle').value, source: 'kiosk'
+                    name: $('#name').value, company: $('#visitorCompany').value, hostId: $('#host').value, vehicle: $('#vehicle').value, source: 'kiosk'
                 });
                 welcome(data.visitor);
             } catch (error) { notice($('#notice'), error.message, true); }

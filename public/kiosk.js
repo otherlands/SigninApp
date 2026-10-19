@@ -34,7 +34,7 @@ function render(data) {
         visitorsEl.replaceChildren(...data.visitors.map(v => {
             const row = document.createElement('div');
             row.className = 'visitor-row';
-            row.innerHTML = `<span><strong>${esc(v.name)}</strong> <span class="badge">badge ${v.badge}</span><br>
+            row.innerHTML = `<span><strong>${esc(v.name)}</strong> <span class="badge">badge ${v.badge}</span>${v.stale ? ' <span class="badge" title="signed in before today">⚠ since ' + esc(SI.fmtWhen(v.signedInAt)) + '</span>' : ''}<br>
         <small class="muted">${esc([v.company, v.hostName ? `visiting ${v.hostName}` : null, v.vehicle].filter(Boolean).join(' · '))} · ${esc(sinceLabel(v.signedInAt))}</small></span>`;
             const out = document.createElement('button');
             out.textContent = 'Sign out';
@@ -58,7 +58,7 @@ async function sign(body, label) {
         const data = await api('POST', '/api/sign', { ...body, source: body.cardUid ? 'card' : 'kiosk' });
         render(data.state);
         const verb = data.event.kind === 'in' ? 'signed IN' : 'signed OUT';
-        notice(noticeEl, `${data.event.subjectName} ${verb} at ${SI.fmtTime(data.event.at)}.`);
+        notice(noticeEl, `${data.event.subjectName} ${verb} at ${SI.fmtTime(data.event.at)}.`, false, 8000, undoFor(data.event));
         if (navigator.vibrate) navigator.vibrate(60);
     } catch (error) {
         notice(noticeEl, error.message || `Could not sign ${label || ''}.`, true);
@@ -66,6 +66,15 @@ async function sign(body, label) {
         busy = false;
         document.querySelectorAll('.person').forEach(b => b.disabled = false);
     }
+}
+
+/** Wrong name tapped? Undo records the opposite move with a note — nothing is deleted, the log stays honest. */
+function undoFor(event) {
+    return {
+        label: 'Undo', run: () => api('POST', '/api/sign', { personId: event.subjectId, direction: event.kind === 'in' ? 'out' : 'in', source: 'kiosk', note: 'undo: tapped by mistake' })
+            .then(d => { render(d.state); notice(noticeEl, `Undone: ${event.subjectName} is signed ${d.event.kind.toUpperCase()} again.`); })
+            .catch(error => notice(noticeEl, error.message, true))
+    };
 }
 
 async function visitorOut(v) {
@@ -93,9 +102,9 @@ async function visitorOut(v) {
 listenForCardWedge((uid) => {
     const token = localStorage.getItem('cardToken') || '';
     api('POST', '/api/sign', { cardUid: uid, source: 'card' }, token ? { 'X-Api-Token': token } : {})
-        .then(data => { render(data.state); notice(noticeEl, `${data.event.subjectName} signed ${data.event.kind.toUpperCase()} by card.`); })
+        .then(data => { render(data.state); notice(noticeEl, `${data.event.subjectName} signed ${data.event.kind.toUpperCase()} by card.`, false, 8000, undoFor(data.event)); })
         .catch(error => notice(noticeEl, error.message, true, 8000));
 }, $('#cardHint'));
 
 load();
-setInterval(load, 15000);
+SI.live(load, { fallbackMs: 30_000 });

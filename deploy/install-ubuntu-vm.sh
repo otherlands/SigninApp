@@ -68,6 +68,11 @@ UNIFI_SSID=
 # BLE brace: scanner names (comma-separated) that sit at doors vs inside; must match SCANNER_NAME on each scanner.
 DOOR_SCANNERS=front-door,back-door
 ANCHOR_SCANNERS=anchor
+# Nightly backups of the register (v3.7): default /opt/eright-signin/data/backups, 30 kept, at 02:00 local. Empty BACKUP_DIR= turns them off.
+#BACKUP_KEEP=30
+#BACKUP_HOUR=2
+# LOG_FORMAT=json for one JSON object per log line
+#LOG_FORMAT=text
 EOF
   chmod 600 "$ENVF"
   echo "  WRITTEN $ENVF — the generated ADMIN_PIN is $PIN and API_TOKEN is $TOK. Record them now; they are not printed again."

@@ -26,8 +26,8 @@
     <script src="/shared.js"></script>
     <script>
         // Phone taps an NFC sticker whose URL is http://<server>/tap. First tap: choose your name (remembered on
-        // this phone). Every later tap signs you in or out. Same idea as V1, kept because it needs no hardware
-        // beyond a 30p sticker.
+        // this phone). Every later tap shows where you stand and one big button to change it — never a silent toggle,
+        // because browsers reload this page on tab restore and Back navigation.
         const { $, esc, api, fmtTime } = SI;
         const KEY = 'door-tap-person-id';
         let state;
@@ -36,20 +36,31 @@
             $('#picker').classList.remove('hidden'); $('#change').classList.add('hidden');
             $('#picker').replaceChildren(...state.people.map(p => {
                 const b = document.createElement('button'); b.className = 'person'; b.innerHTML = `<strong>${esc(p.name)}</strong><span>Use this name</span>`;
-                b.onclick = () => { localStorage.setItem(KEY, p.id); tap(p.id); }; return b;
+                b.onclick = () => { localStorage.setItem(KEY, p.id); confirmTap(p); }; return b;
             }));
         }
-        async function tap(personId) {
+        function confirmTap(person) {
+            $('#picker').classList.remove('hidden'); $('#change').classList.remove('hidden');
+            $('#heading').textContent = person.name;
+            $('#message').textContent = person.signedIn ? `You are signed IN (since ${fmtTime(person.since)}).` : 'You are signed OUT.';
+            const b = document.createElement('button');
+            b.className = `person ${person.signedIn ? '' : 'in'}`;
+            b.innerHTML = `<strong>${person.signedIn ? 'Sign me OUT' : 'Sign me IN'}</strong><span>${state.inCount} on site now</span>`;
+            b.onclick = () => tap(person.id, person.signedIn ? 'out' : 'in');
+            $('#picker').replaceChildren(b);
+        }
+        async function tap(personId, direction) {
             $('#picker').classList.add('hidden'); $('#heading').textContent = 'Signing…';
             try {
-                const data = await api('POST', '/api/sign', { personId, source: 'tap' });
+                const data = await api('POST', '/api/sign', { personId, direction, source: 'tap' });
                 $('#heading').textContent = data.event.kind === 'in' ? 'You are signed IN' : 'You are signed OUT';
                 $('#message').textContent = `${data.event.subjectName} · ${fmtTime(data.event.at)} · ${data.state.inCount} on site`;
                 $('#change').classList.remove('hidden');
                 if (navigator.vibrate) navigator.vibrate(80);
             } catch (error) {
-                localStorage.removeItem(KEY);
-                $('#heading').textContent = 'Could not sign you in'; $('#message').textContent = error.message + ' — choose your name again.';
+                // Forget the remembered name only when the server says it no longer exists, not on a network blip.
+                if (error.status === 404) localStorage.removeItem(KEY);
+                $('#heading').textContent = 'Could not sign you in or out'; $('#message').textContent = error.message + (error.status === 404 ? ' — choose your name again.' : ' — tap the sticker again.');
                 $('#change').classList.remove('hidden');
             }
         }
@@ -57,9 +68,9 @@
             try {
                 state = await api('GET', '/api/state');
                 $('#company').textContent = state.companyName;
-                const id = localStorage.getItem(KEY);
-                if (!id || !state.people.some(p => p.id === id)) return showPicker();
-                tap(id);
+                const person = state.people.find(p => p.id === localStorage.getItem(KEY));
+                if (!person) return showPicker();
+                confirmTap(person);
             } catch { $('#heading').textContent = 'Server unavailable'; $('#message').textContent = 'Connect to the company Wi-Fi and tap again.'; }
         }
         $('#change').onclick = () => { localStorage.removeItem(KEY); showPicker(); };

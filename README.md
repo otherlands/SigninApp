@@ -1,4 +1,4 @@
-# eRIGHT Sign-In v3.6 — staff & visitor register with fire roll call
+# eRIGHT Sign-In v3.7 — staff & visitor register with fire roll call
 
 Small LAN system for a single door: 8 staff, visitors, and — because eRIGHT has **no designated
 fire marshal** — a register that anyone at the assembly point can open on a phone and that is
@@ -8,8 +8,10 @@ step. Data is SQLite (Node's built-in `node:sqlite`).
 Built 2026-09-25 from the original SigninApp (`tobygladman2/SigninApp` commit `6eab63a`, shared-server
 kiosk) plus the useful bits of the separate Home Presence project: SQLite persistence, event IDs for
 idempotent retries, API tokens for devices, a mirror/replica, an ESP32 door reader, and a device column
-on every event. Deliberately **not** taken from Home Presence: camera motion, BLE presence, geofencing,
-and the inferred "auto-away" sign-out — a fire register must only change when a human acts.
+on every event. The v3.0 rewrite deliberately left out camera motion, BLE presence, geofencing and the inferred
+"auto-away" sign-out. v3.4–3.6 later added phone and key-tag presence, but only under the rules in
+"Presence": inference may sign people **in**, may only undo its own sign-ins, and never overrules a person
+who tapped. Camera motion and geofencing are still out.
 The original one-file JSON version is preserved in git history (`git show 6eab63a:server.js`).
 
 ## Where things stand (2026-09-27)
@@ -17,6 +19,8 @@ The original one-file JSON version is preserved in git history (`git show 6eab63
 | Piece | State | Evidence |
 | --- | --- | --- |
 | **Server** v3.6 | **LIVE** on Proxmox CT 106 `signin` (Ubuntu 24.04 LXC), `http://192.168.101.102:3000` | `/api/health` 3.6.0 at 21:35Z 2026-09-27 (upgraded from 3.3.0 with `deploy/upgrade-ct106.sh`; db copied to `/root/signin-pre-upgrade-*.sqlite` first); `signin_wifi_enabled 0` until the UniFi key is set |
+| **Server v3.7** (audit fixes, foundations, device tokens, admin sessions, audit trail, live screens; see "v3.7") | **built + tested (44 tests), not yet deployed** — upgrade with `deploy/upgrade-ct106.sh`; schema migrates itself; no env changes needed | `npm test`; local smoke run of `server.js` and headless-browser check of the visitor, tap, kiosk, fire and admin pages 2026-10-19 |
+| **Door-reader firmware v3.7** (fire-button retry, offline tap queue) | **compiled, not yet flashed** | `pio run` 2026-10-19: RAM 15.6 %, flash 29.8 % |
 | **Presence — Wi-Fi brace** | built + tested; **off** until `UNIFI_URL` + read-only `UNIFI_API_KEY` are in `/etc/eright-signin.env` | startup log: `presence: Wi-Fi brace off` |
 | **Presence — BLE brace** | server side live (`/api/presence/ble`); back-door firmware with the NimBLE scan **compiled, not yet flashed** (board off the lead); no tags bought yet; anchor ESP32 not yet built | `deploy/demo-presence.ps1` drove the full walked-in sequence locally 2026-09-27 |
 | Staff names, company, fire notice | **not yet entered** | Admin → PIN (from the install log) |
@@ -52,24 +56,99 @@ The original one-file JSON version is preserved in git history (`git show 6eab63
 | `7b998b0` | 2026-09-26 | README: history + current-state summary |
 | `a7b09ac`…`f09c953` | 2026-09-27 | PN532 arrived; WIRING.md/.html with photos; **first real cards read** (back-door reader) |
 | `6558a2f` `de10b26` | 2026-09-27 | **v3.4–3.6 Presence**: Wi-Fi brace (UniFi client list) + BLE brace (key tags heard by door/anchor scanners), direction from scanner sequence, auto sign-in, badge-not-act on absence, auto sign-out only when inference undoes inference and both braces agree; ESP32 firmware BLE scan; Pi BLE scanner; enrolment pickers. **Live on CT 106 21:35Z** via `deploy/upgrade-ct106.sh` |
+| (uncommitted) | 2026-10-19 | **v3.7 audit fixes + foundations** — see "v3.7: audit fixes and foundations" |
 
-Home: `https://github.com/tobygladman2/SigninApp` (also mirrored at `otherlands/SigninApp`; the
-development clone's `origin` has both as push URLs so one push updates both).
+Home: `https://github.com/otherlands/SigninApp` (remote `fork` in the development clone). The original
+`tobygladman2/SigninApp` was disconnected from the development clone on 2026-10-19 and is no longer updated.
 Developed for eRIGHT Ltd, 8 staff, one door.
+
+## v3.7: audit fixes and foundations (2026-10-19)
+
+A full audit of v3.6 found twelve problems; v3.7 fixes all of them and adds the groundwork for the larger
+redesign. Each fix has a regression test named after its finding in `test/hardening.test.js`.
+
+| # | Was | Now |
+| --- | --- | --- |
+| C1 | A phone still on the Wi-Fi as its owner walked out after **tapping out** signed them straight back in, and they then stayed "on site" overnight (one signal alone never signs anyone out) | After a person's sign-out, inference signs them in only on a **fresh arrival**: the phone or tag must have been absent for the absence window (5 min phone / 3 min tag) and then reappear, or a door→inside walk must *start* after the sign-out. A human sign-out can no longer be undone by a phone or keys left behind. An admin closing a forgotten sign-out (`source: stale-close`) is bookkeeping, not a departure: any newer phone or tag evidence signs the person back in, and **"Close all"** skips anyone whose phone or tag shows them inside right now (listed as `skipped`) |
+| C2 | The admin PIN could be guessed at ~2,000/s with no limit (6 digits ≈ 8 min) | 10 wrong PINs from one address in 15 min → that address gets **429** for 15 min, even with the right PIN. A missing PIN is not counted. The kiosk and fire page are never locked |
+| C3 | The API token was required by the **name** a request gave itself: `source:"kiosk"` with a `cardUid` skipped it | Every card UID needs the token whatever the source. Only `kiosk`, `tap`, `fire-page`, `visitor` and `admin` (admin needs the PIN) are allowed without it; anything else is a device and must show the token |
+| C4 | The visitor form's Company field had the same `id` as the page header, so **no walk-in visitor's company was ever saved** | Field renamed; a test checks every page for duplicate ids |
+| C5 | Every BLE scanner post (every 5 s) re-queued the off-site copy: ~17,000 SharePoint uploads/day with nobody moving | Off-site copies are published only when the register **changed** (fingerprint of who is in, presence states, visitors, roll-call marks, last event). Sightings are stored at most once per tag per scanner per 30 s |
+| C6 | Fire page useless offline | Not fixed in v3.7: needs HTTPS + a service worker (roadmap phase 5) |
+| C7 | Visitors who forgot to sign out stayed on every roll call forever, unflagged | Visitors signed in before local midnight are flagged ⚠ on the kiosk, `/fire`, `who-is-on-site.txt` and Admin → Forgotten sign-outs (closable there); `signin_stale_visitors` on `/metrics` |
+| C8 | The ESP32 fire button posted once and showed red even when the post failed; taps while the server was down were lost | The button **retries every 3 s for up to 15 min** and blinks red until the server confirms. Undelivered card taps are queued (16) and replayed in order with their age, so the server records when they really happened (`ageMs`, devices only, capped at 12 h, note "delivered n min late"). The BLE buffer is mutex-guarded |
+| C9 | `ble-scanner.py` asked bleak for passive scanning, which on Linux needs `or_patterns` → crash loop on first boot | Active scanning by default; `SCAN_MODE=passive` builds the required patterns (iBeacon + flags) |
+| C10 | `/metrics` repeated HELP/TYPE per labelled series (invalid exposition once two scanners report) | Declared once per metric; a test checks it |
+| C11 | Giving a removed person's card to someone new → HTTP 500 with the raw SQL error | The card (phone, tag) is released from the removed person and reassigned; conflicts are 409 with a plain message; server errors never leak internals. A card number typed into the "new staff name" box is refused |
+| C12 | No backups (the upgrade script `cp`-ed a live WAL database) | **Nightly backup** at `BACKUP_HOUR` (default 02:00 local) into `data/backups/` with `VACUUM INTO` (consistent while running), integrity-checked, sightings + outbox dropped, newest `BACKUP_KEEP` (30) kept, copied to SharePoint `backups/` when configured and ≤ 4 MB. Failed backups retry hourly. Admin: `POST /api/backup`. The upgrade script uses `VACUUM INTO` too |
+
+**Foundations** (`test/foundations.test.js`):
+
+- **Config** in one module (`lib/config.js`): errors (bad `TZ_NAME`, `PORT`, URLs, `REPLICA=1` without `MIRROR_TOKEN`)
+  stop the server at start; warnings (no or short PIN or token, half-configured SharePoint or UniFi) are logged and shown to
+  the admin on `/api/health`. Run `node server.js --check-config` before restarting after editing the env file.
+- **Schema migrations**: numbered, transactional, recorded in `PRAGMA user_version`. A v3.6 database upgrades itself
+  on first start; a database from newer software is refused rather than damaged.
+- **One clock and one time zone** (`lib/time.js`): every timestamp goes through an injectable clock and every local-day
+  question through `LocalTime`, so tests can drive time across BST/GMT.
+- **Scheduler** (`lib/scheduler.js`): Wi-Fi poll, presence rules, prune, outbox, backup are named jobs with last
+  run / ok / error / duration, never overlapping. Failures are logged, not swallowed.
+- **Health checks**: `/api/health` adds `status` (`ok` | `degraded`), `checks` (database + schema version, each job,
+  outbox age, backup age, SharePoint, Teams, Wi-Fi) and `jobs`; `/metrics` adds `signin_check_ok{check}`,
+  `signin_job_failures{job}`, `signin_job_last_run_age_seconds{job}`, `signin_backup_*`. `ok` still just means "answering".
+- **Structured logs**: `LOG_FORMAT=json` for one JSON object per line.
+- **CI** (`.github/workflows/ci.yml`): tests on Node 22.13 and 24, config check, firmware build from
+  `config.example.h`, Python and shell syntax.
+
+**Roll-call access is unchanged by design**: anyone on the LAN may start a roll call, tick SAFE/MISSING and end it,
+because there is no designated marshal. Every action records its device.
+
+**Security model (roadmap phase 2, `test/security.test.js`):**
+
+- **Per-device tokens.** Admin → *Devices & tokens* issues a token per reader, scanner or wall button. Each token has
+  only the scopes it needs: `sign` (card taps), `presence` (tag sightings), `fire` (start a roll call). It is shown
+  **once** and stored only as a SHA-256 hash. It also **fixes the device's name** in the log, whatever the request
+  claims. Revoking one device leaves the others alone, and the name can be reissued. The shared `API_TOKEN` keeps
+  working with every scope until you remove it from the env file. Put a device's token where the shared one goes today
+  (`API_TOKEN` in the ESP32 `config.h`, `SIGNIN_TOKEN` for the Pi scanner, `KIOSK_CARD_TOKEN` for the kiosk).
+  Bench mode (no `API_TOKEN` and no device token ever issued) ends as soon as the first device token is issued. Device tokens
+  can never feed the mirror.
+- **Admin sessions.** The admin page logs in once (`POST /api/admin/login`) and gets an `HttpOnly; SameSite=Strict`
+  cookie valid for 12 h. The PIN is no longer kept in the browser or sent with every request. Wrong PINs count toward
+  the lockout; *Log out* ends the session. `X-Admin-Pin` still works for scripts.
+- **Audit trail.** Every admin change goes into the event log as kind `admin`, with the device and what changed:
+  people added, changed or removed (credential values are not written), company name, fire notice, device tokens
+  issued or revoked, hand backups, logins and lockouts. It shows in Admin → Log and in the CSV.
+
+**Live screens (roadmap phase 5, first part):**
+
+- **Push, not poll.** Pages hold one `GET /api/stream` (Server-Sent Events) connection and refresh as soon as the
+  register changes. Measured in a headless browser: a kiosk tap reaches the fire page in 150–270 ms, down from 5 s
+  polling. Scanner chatter and mirror intake do not notify; bursts are coalesced. Only **visible** tabs hold a stream,
+  so a pile of hidden tabs cannot use up the browser's ~6 connections and stall ticks. A tab that becomes visible
+  reconnects and refreshes at once. Polling stays as the safety net (fire page 10 s, kiosk 30 s, admin 60 s), and the
+  fire page still shows "server unreachable" from it.
+- **Undo on the kiosk.** Every tap or card shows **Undo** for 8 s. It records the opposite move with the note
+  "undo: tapped by mistake". Nothing is deleted.
+- **Roll-call rows never move under a finger.** Ticks from other phones arrive live, but the list keeps its order;
+  status shows in colour and the counters. Re-sorting by status was tried and rejected: it puts a different
+  person's SAFE button where the marshal was about to tap.
+- Bench mode stays off for good once any device token has been issued; revoking the last token locks the API, it
+  does not reopen it.
 
 ## First run checklist
 
 On a Proxmox/Ubuntu VM, follow **"Install on Ubuntu, step by step"** below — it covers all of this in order. The short form:
 
 1. Install Node 22.13 or newer (`node --version`). Developed and tested on 24.13.1.
-2. `npm test` — expect `pass 17`.
-3. Set `ADMIN_PIN` and `API_TOKEN` before exposing the server to the office LAN (see `deploy/`). Give the server a fixed IP or hostname.
+2. `npm test`: every test must pass.
+3. Set `ADMIN_PIN` and `API_TOKEN` before exposing the server to the office LAN (see `deploy/`). Give the server a fixed IP or hostname. `node server.js --check-config` lists anything wrong.
 4. `npm start`, open `/admin`, set the company name and fire notice, add the staff.
 5. Put `/` on the door tablet in fullscreen. Put `/fire` on **every** staff phone's home screen (there is no single marshal) and print a QR code to it for the assembly-point sign.
 6. Set the `SP_*` variables so the register is copied to SharePoint after every change (see "SharePoint off-site copy"); confirm the first push in Admin → Off-site copies.
 7. Set `TEAMS_WEBHOOK_URL` (see "Teams channel") so a roll call starting reaches every staff phone in seconds; press START then END on `/fire` and watch both cards land.
 8. Delete any `data/` folder copied from a development machine before first real use; it holds test rows.
-9. Back up `data/signin.sqlite` (and its `-wal` file) — it is the whole register. A small UPS on the server and router lets the last sign-outs reach SharePoint after the mains go.
+9. Backups are automatic (nightly, `data/backups/`, 30 kept, copied to SharePoint when configured): check Admin → Off-site copies shows "Backups: ok". A small UPS on the server and router lets the last sign-outs reach SharePoint after the mains go.
 
 ## Pages
 
@@ -84,8 +163,9 @@ On a Proxmox/Ubuntu VM, follow **"Install on Ubuntu, step by step"** below — i
 ## Run
 
 ```powershell
-npm test          # 17 tests, in-memory SQLite + fake Graph + fake Teams, ~0.4 s
+npm test          # all tests, in-memory SQLite + fake Graph + fake Teams + fake UniFi, a few seconds
 npm start         # http://<ip>:3000
+node server.js --check-config   # validate the environment without starting
 ```
 
 Environment variables (all optional):
@@ -93,10 +173,13 @@ Environment variables (all optional):
 | Var | Purpose |
 | --- | --- |
 | `PORT`, `HOST` | default 3000 on all interfaces |
-| `ADMIN_PIN` | required in `X-Admin-Pin` header for /admin write routes, export, events. Kiosk and fire page never need it. |
-| `API_TOKEN` | required in `X-Api-Token` for device sources (`card`, `esp32`, `api`) and alarm-triggered roll calls (`alarm`, `webhook`). Human sources (`kiosk`, `tap`, `fire-page`) never need it. |
+| `DATA_FILE` | the register, default `data/signin.sqlite` |
+| `ADMIN_PIN` | required in `X-Admin-Pin` header for /admin write routes, export, events. Kiosk and fire page never need it. 10 wrong PINs from one address in 15 min lock that address out (429) for 15 min. |
+| `API_TOKEN` | required in `X-Api-Token` for **every card UID** and for any source other than the human ones (`kiosk`, `tap`, `fire-page`, `visitor`; `admin` needs the PIN instead): `card`, `esp32`, `api`, `alarm`, `webhook`, scanners. |
 | `MIRROR_URL`, `MIRROR_TOKEN` | main server pushes a roster snapshot to the mirror after every change (queued in SQLite, retried every 15 s). |
-| `REPLICA=1` | this instance is the read-only mirror. Serves `/fire` from the last snapshot and can run its own roll call. Refuses sign-ins. |
+| `REPLICA=1` | this instance is the read-only mirror. Serves `/fire` from the last snapshot and can run its own roll call. Refuses sign-ins. Needs `MIRROR_TOKEN` (refuses to start without it). |
+| `BACKUP_DIR`, `BACKUP_KEEP`, `BACKUP_HOUR` | nightly backups: directory (default `data/backups`; empty = off), how many to keep (30), local hour (2). |
+| `LOG_FORMAT` | `text` (default) or `json` (one object per line). |
 | `TZ_NAME` | IANA zone for "today" and CSV times, default `Europe/London`. |
 | `TEAMS_WEBHOOK_URL` | **Teams channel push** — a Workflows webhook URL. Roll-call start, all-safe and end are posted as Adaptive Cards within seconds (queued in SQLite, retried every 15 s for up to an hour). See "Teams channel". |
 | `PUBLIC_URL` | The address staff phones use, e.g. `http://192.168.101.40:3000`. Gives Teams cards an **Open the roll call** button. |
@@ -104,7 +187,7 @@ Environment variables (all optional):
 | `DOOR_SCANNERS`, `ANCHOR_SCANNERS` | **Presence, BLE brace** — comma-separated scanner names that sit at doors (default `front-door,back-door`) and inside (default `anchor`). Must match `SCANNER_NAME` on each scanner. |
 | `SP_TENANT_ID`, `SP_CLIENT_ID`, `SP_CLIENT_SECRET`, `SP_SITE`, `SP_DRIVE`, `SP_FOLDER` | **SharePoint off-site copy** — see the section below. All four of tenant/client/secret/site must be set for it to switch on. |
 
-Data lives in `data/signin.sqlite` (+ `-wal`), git-ignored. Back it up. `deploy/` has systemd
+Data lives in `data/signin.sqlite` (+ `-wal`), git-ignored, with nightly copies in `data/backups/`. `deploy/` has systemd
 units for main and mirror.
 
 ## Teams channel — the roll call reaches every phone in seconds (v3.3)
@@ -165,7 +248,7 @@ random BLE addresses are ignored by every scanner — a phone without an app is 
 | Evidence | Register | Failure direction |
 | --- | --- | --- |
 | Card / kiosk / `/tap` / admin | truth, as before | — |
-| Walked-in sequence, **or** phone joins the Wi-Fi, **or** tag heard at the anchor | **auto sign-in** (`source: ble` / `wifi`, note names the evidence) | over-count only → safe |
+| Walked-in sequence, **or** phone joins the Wi-Fi, **or** tag heard at the anchor — and, after any sign-out, only as a **fresh arrival** (absent for the absence window, then back; or a walk that starts after the sign-out) | **auto sign-in** (`source: ble` / `wifi`, note names the evidence) | over-count only → safe; a phone still on the Wi-Fi as its owner walks out after tapping out does **not** sign them back in (v3.7, C1) |
 | Sign-in was **inferred** **and** both braces absent ≥ 10 min **and** the tag walked out past a door | **auto sign-out** (`source: ble+wifi`) | needs a dead tag *and* a dead phone *and* a false exit sequence to under-count |
 | Only one brace says "left", or the person tapped in **deliberately** | **shown, never acted on**: 📵 *probably left 17:32* on the kiosk, `/fire`, Admin and `who-is-on-site.txt`; the person stays on the roll call | over-count → safe |
 
@@ -260,7 +343,7 @@ node --version       # expect v22.13 or newer (v24 is fine too — developed on 
 ```
 
 **4. Get the code and run the installer.** One command does the rest: creates the `signin` system user,
-clones to `/opt/eright-signin`, runs the 17 tests, writes `/etc/eright-signin.env` with a **generated admin
+clones to `/opt/eright-signin`, runs the tests, writes `/etc/eright-signin.env` with a **generated admin
 PIN and API token (printed once — write them down)**, installs and starts the service, and proves
 `/metrics` answers.
 
@@ -314,9 +397,10 @@ the `signin` user, keeps the env file, re-runs the tests and restarts (idempoten
 ```bash
 systemctl status eright-signin              # running?
 journalctl -u eright-signin -n 50 --no-pager  # last log lines (every line is UTC-stamped)
-curl -s localhost:3000/api/health           # JSON: teams / sharepoint last push state, outbox depth
-curl -s localhost:3000/metrics | grep -E '^signin_(up|on_site_total|rollcall_open|lone_worker)'
-sudo cp /opt/eright-signin/data/signin.sqlite /root/signin-$(date +%F).sqlite   # manual backup of the register
+curl -s localhost:3000/api/health           # JSON: status ok|degraded, checks, jobs, teams / sharepoint / backup state
+curl -s localhost:3000/metrics | grep -E '^signin_(up|on_site_total|rollcall_open|lone_worker|check_ok)'
+ls -l /opt/eright-signin/data/backups/        # nightly backups (newest 30). Restore: stop the service, delete data/signin.sqlite-wal and -shm, copy a backup over data/signin.sqlite (owner signin), start
+sudo -u signin node /opt/eright-signin/server.js --check-config   # after editing the env file, before restarting
 ```
 
 ## SharePoint off-site copy (the "building is on fire" view)
@@ -359,12 +443,12 @@ through, and superseded snapshots are collapsed so a long outage does not replay
 ## Fire-safety rules baked into the code
 
 1. **One source of truth.** Every device reads the same server; nothing is stored only on a tablet.
-2. **Only deliberate acts change the register.** Kiosk tap, card, NFC tap, visitor form, admin. No sensor inference.
+2. **Deliberate acts are truth; inference is bounded.** Kiosk tap, card, NFC tap, visitor form and admin change the register. The phone and key-tag signals (v3.4–3.6) may sign a person **in** (over-count is safe), may sign out only someone *they* signed in (and only when both signals agree and the tag walked out), and may never undo a person's own tap. After a person's own sign-out they need a fresh arrival (v3.7).
 3. **The roll call is a snapshot.** Starting it copies the roster into `rollcalls.roster_json`. People signing out during the evacuation do not disappear from the roll-call list (tested).
-4. **Forgotten sign-outs are flagged, never auto-closed.** Anyone signed in before local midnight is amber on the kiosk and marked "⚠ signed in before today" on the fire page. Admin closes them by hand and the event says so. Over-count is the safe failure; silent under-count is not.
-5. **The register must outlive the building.** The server pushes a copy to SharePoint (and optionally a `REPLICA` box) after every change, with nobody doing anything. The fire page's localStorage cache is a last-resort fallback only — with no designated marshal, no phone can be assumed to have it.
+4. **Forgotten sign-outs are flagged, never auto-closed.** Anyone, staff or visitor, signed in before local midnight is amber on the kiosk and marked "⚠ signed in before today" on the fire page. Admin closes them by hand and the event says so. Over-count is the safe failure; silent under-count is not.
+5. **The register must outlive the building.** The server pushes a copy to SharePoint (and optionally a `REPLICA` box) after every change, with nobody doing anything, and backs the whole database up nightly. The fire page's localStorage cache is a last-resort fallback only — with no designated marshal, no phone can be assumed to have it.
 6. **Every event carries who/what/when/where.** `kind, subject, at (UTC), source, device, note`. CSV export has all of them.
-7. **Retries are safe.** A device can resend the same `eventKey` and the person is not toggled back (tested).
+7. **Retries are safe.** A device can resend the same `eventKey` and the person is not toggled back (tested). A reader that was offline replays its taps with their real age.
 
 ## What actually survives the fire today (honest, 2026-10-01)
 
@@ -592,11 +676,13 @@ flowchart LR
 
 | Method | Path | Body / notes |
 | --- | --- | --- |
-| GET | `/api/health` | `{ok, version, replica, outbox, mirror, teams:{configured, last:{at, ok, error?}}, publicUrl, sharepoint:{configured, site, folder, last:{at, ok, files|error}}}` |
+| GET | `/api/health` | `{ok, status:"ok"|"degraded", checks:[{name, ok, detail}], jobs:[{name, lastRun, lastOk, lastError, failures}], version, replica, outbox, mirror, teams:{configured, last}, publicUrl, backup:{dir, keep, last:{at, ok, bytes, offsite}}, sharepoint:{configured, site, folder, last}, warnings? (admin only)}` |
 | GET | `/metrics` | Prometheus text exposition, **counts only — no names** (see "Estate integration"). No PIN or token: it is meant to be scraped. |
 | GET | `/api/state` | full kiosk state incl. `loneWorker`, `expectedToday`, `publicUrl` |
 | GET | `/api/roster` | who is on site now (staff + visitors) + `loneWorker` (exactly one staff, no visitors) |
-| POST | `/api/sign` | `{personId}` or `{cardUid}`; optional `direction:"in"|"out"`, `eventKey`, `source`, `device`, `note` |
+| GET | `/api/stream` | Server-Sent Events: `hello` on connect, `change` `{seq}` whenever the register changes. No PIN (same trust as `/api/state`). |
+| POST | `/api/admin/login` | `{pin}` → 200 + `si_admin` HttpOnly cookie (12 h); 401 wrong PIN; 429 locked out. `POST /api/admin/logout` ends it |
+| POST | `/api/sign` | `{personId}` or `{cardUid}` (card UIDs always need a token with the `sign` scope); optional `direction:"in"|"out"`, `eventKey`, `source`, `device` (ignored when a device token names the device), `note`; devices only: `ageMs` (how long ago a buffered tap happened, ≤ 12 h) |
 | POST | `/api/visitors` | `{name, company?, hostId?, vehicle?}` → 201 with badge |
 | POST | `/api/visitors/:id/out` | |
 | GET | `/api/expected` | pre-registered visitors expected **today**, not yet arrived (no PIN — the tablet uses it). `?all=1` + admin PIN: next 14 days incl. arrived rows |
@@ -612,7 +698,7 @@ flowchart LR
 | POST | `/api/fire/mark` | `{subjectType:"staff"|"visitor", subjectId, status:"safe"|"missing"|"clear", by?}` |
 | POST | `/api/fire/end` | `{by?}` |
 | POST | `/api/mirror` | replica intake, `{type:"roster", roster}` |
-| admin | `/api/people` (GET/POST), `/api/people/:id` (PATCH name/cardUid/active, DELETE), `PUT /api/company`, `PUT /api/fire-notice`, `POST /api/stale/close`, `GET /api/events`, `GET /api/export?from&to`, `GET /api/fire/history`, `GET /api/visitors/history`, `POST /api/mirror/flush` | |
+| admin | `/api/people` (GET/POST), `/api/people/:id` (PATCH name/cardUid/active, DELETE), `PUT /api/company`, `PUT /api/fire-notice`, `POST /api/stale/close` (`{personId?}` / `{visitorId?}` / all → `{closed, skipped}`; "all" skips staff whose phone or tag is seen inside), `GET /api/events`, `GET /api/export?from&to`, `GET /api/fire/history`, `GET /api/visitors/history`, `POST /api/mirror/flush`, `POST /api/backup` (back up now), `GET /api/devices`, `POST /api/devices` `{name, role, scopes:["sign"|"presence"|"fire"]}` → 201 `{device, token}` (token shown once), `DELETE /api/devices/:id` (revoke) | |
 
 ## Estate integration — the register on eRIGHT's monitoring rails (v3.2)
 
@@ -632,7 +718,9 @@ used to depend on somebody happening to look are now **pushed**:
 `signin_stale_signins`, `signin_lone_worker`, `signin_local_hour`, `signin_rollcall_open` and — only while one is
 open — `signin_rollcall_{started_timestamp_seconds,total,safe,missing,unaccounted}`, `signin_outbox_depth`,
 `signin_sharepoint_configured`, `signin_sharepoint_last_push_{ok,age_seconds}` (only after a first push),
-`signin_events_last_24h`, `signin_started_timestamp_seconds`, `signin_info{version,tz}`.
+`signin_events_last_24h`, `signin_started_timestamp_seconds`, `signin_info{version,tz}`; since v3.7 also
+`signin_stale_visitors`, `signin_backup_{enabled,last_ok,age_seconds}`, `signin_check_ok{check}`,
+`signin_job_failures{job}`, `signin_job_last_run_age_seconds{job}` (alert on `signin_check_ok == 0` for 15 min).
 
 **Wiring (in the llm-cluster repo, deployed by Alan on platform-a):** scrape job `signin` in
 `ops-config/observability/prometheus.yml`, rule group `signin_safety` in `alert-rules.yml`, a hub tile,
@@ -665,6 +753,21 @@ ALL ACCOUNTED FOR on a 430 px phone viewport, admin expected-visitor planner; ro
 admin card assignment; wedge listener (synthesised keys). Physical reader: identified and its output format
 confirmed with two cards (table above); kiosk end-to-end with it still owed.
 
+v3.7 adds `test/hardening.test.js` (one test per audit finding C1–C12: fresh-arrival rule for phones and tags,
+closing forgotten sign-outs never strands someone visibly inside,
+PIN lockout, token by claim, no duplicate page ids, change-only publishing + sighting throttle, overdue visitors,
+well-formed metrics, credential reuse + no SQL leaks, backups, back-dated offline taps) and `test/foundations.test.js`
+(migrating a real v3.6-shaped and a v3.3-shaped database, refusing a newer schema, config errors/warnings and
+`--check-config`, BST/GMT day boundaries incl. both clock-change days, injected clock on events, scheduler
+failure/overlap handling, `degraded` health + metrics, nightly backup timing and retry, JSON logs). The real
+`server.js` was smoke-run on a scratch database 2026-10-19 (health `ok`, first backup written, every page 200),
+and the firmware compiles both with the live `config.h` and with `config.example.h` (as CI does).
+`test/security.test.js` covers the phase-2/5 work: device tokens (admin-only issue, shown once, never listed, scopes
+enforced per route, name binding, revoke, reissue, bench mode ending, no mirror access), admin sessions (cookie flags,
+forged cookie, logout, lockout via the login form), the audit trail (exact entries in order, lockout logged) and
+`/api/stream` (hello, change on a sign-in, silence for scanner chatter, bursts coalesced). The admin login, device
+panel, kiosk Undo and live fire-page update were also driven in headless Edge on 2026-10-19.
+
 Not tested: the physical card reader driving the kiosk page, a physical webhook button,
 the SharePoint push against the real tenant, a real Prometheus scrape from platform-a, iOS Safari specifics,
 the **radio path of presence** (no BLE firmware flashed yet, no tags bought, no UniFi key set — the engine is proven only with
@@ -677,7 +780,10 @@ presses), never by the alarm itself.
 ## Known limits / next steps
 
 - No per-person PIN: on a trusted door tablet anyone can tap anyone's name. Cards or `/tap` fix this if it matters.
-- Admin PIN is a shared secret over plain HTTP on the LAN. Put it behind a reverse proxy with TLS if the network is not trusted.
+- Admin PIN is a shared secret over plain HTTP on the LAN (brute force is rate-limited and the admin page uses an HttpOnly session cookie, v3.7). Put it behind a reverse proxy with TLS if the network is not trusted.
+- Roll-call START, ticks and END need no credential (no designated marshal); every action records its device.
+- The fire page does not work offline (no HTTPS, so no service worker): roadmap phase 5.
+- Backups larger than 4 MB are kept locally only (Graph simple upload limit); an upload session is not built.
 - The mirror is a roster replica, not a full database replica; roll calls run on the mirror are stored on the mirror.
 - The SharePoint copy is read-only at the assembly point: anyone can see who was inside, nobody can tick names off there.
 - Decided against: running the server on an ESP32 (a full C++ rewrite that would still be inside the building) and a fire-panel relay (no access to the panel).

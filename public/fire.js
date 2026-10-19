@@ -51,12 +51,14 @@ function render(data) {
 }
 
 function renderRows(el, rows, type, marks, active) {
+    // Rows keep a fixed order while ticks arrive: re-sorting under a marshal's finger would put a different person's
+    // SAFE button where they were about to tap. Status is shown by colour and the counters, not by position.
     el.replaceChildren(...rows.map(item => {
         const mk = marks.get(`${type}:${item.id}`);
         const row = document.createElement('div');
         row.className = `roll-row ${mk ? mk.status : ''}`;
         const detail = type === 'visitor'
-            ? [item.company, item.hostName ? `visiting ${item.hostName}` : null, item.vehicle, `badge ${item.badge}`].filter(Boolean).join(' · ')
+            ? [item.stale ? '⚠ signed in before today — may have forgotten to sign out' : '', item.company, item.hostName ? `visiting ${item.hostName}` : null, item.vehicle, `badge ${item.badge}`].filter(Boolean).join(' · ')
             : [item.stale ? '<span class="stale-tag">⚠ signed in before today — may have forgotten to sign out</span>' : '',
             item.presence?.state === 'probably-left' ? `<span class="stale-tag">📵 phone/tag last seen ${fmtTime(item.presence.lastSeen)} — probably already out</span>` : '',
             item.presence?.state === 'here' ? '<span style="color:var(--in)">📱 phone/tag seen inside</span>' : ''].filter(Boolean).join(' · ');
@@ -141,4 +143,5 @@ function alertUser() {
 window.addEventListener('pointerdown', () => { audioArmed = true; }, { once: true });
 
 load();
-setInterval(load, 5000);
+// Live push for instant ticks across every phone; the 10 s poll stays as the offline detector and cache refresher.
+SI.live(load, { fallbackMs: 10_000, debounceMs: 0 });

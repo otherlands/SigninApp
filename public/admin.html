@@ -23,6 +23,7 @@
             <div class="count-pill"><span>On site</span><b id="inCount">–</b></div>
             <a href="/"><button class="ghost">Kiosk</button></a>
             <a href="/fire"><button class="danger">Fire page</button></a>
+            <button id="logout" class="ghost small">Log out</button>
         </div>
     </header>
 
@@ -45,7 +46,7 @@
 
         <section class="panel">
             <h2>Forgotten sign-outs</h2>
-            <p class="muted">Staff still signed in from a previous day. They stay on the fire register until you close
+            <p class="muted">Staff and visitors still signed in from a previous day. They stay on the fire register until you close
                 them here — nothing is closed automatically.</p>
             <div id="staleList"></div>
             <button id="closeStale" class="hidden" style="margin-top:10px">Close all forgotten sign-outs</button>
@@ -80,6 +81,29 @@
             </div>
             <h2 style="margin-top:24px">Off-site copies</h2>
             <p class="muted" id="offsiteState">…</p>
+
+            <h2 style="margin-top:24px">Devices &amp; tokens</h2>
+            <p class="muted">Give each card reader, scanner and wall button its own token with only what it needs. A
+                device's token also fixes its name in the log, and one lost device can be revoked without re-keying the rest.
+                The shared API_TOKEN keeps working until you remove it from the server.</p>
+            <form id="deviceForm" class="form-grid" autocomplete="off">
+                <label>Name<input id="devName" required maxlength="40" placeholder="back-door-reader"></label>
+                <label>Kind<select id="devRole">
+                        <option value="reader">card reader / door unit</option>
+                        <option value="scanner">tag scanner</option>
+                        <option value="button">wall button</option>
+                        <option value="kiosk">kiosk card reader</option>
+                    </select></label>
+                <label class="row" style="color:var(--text)"><input type="checkbox" name="scope" value="sign" checked
+                        style="width:22px;min-height:22px;flex:0 0 22px"> card taps</label>
+                <label class="row" style="color:var(--text)"><input type="checkbox" name="scope" value="presence"
+                        style="width:22px;min-height:22px;flex:0 0 22px"> tag sightings</label>
+                <label class="row" style="color:var(--text)"><input type="checkbox" name="scope" value="fire"
+                        style="width:22px;min-height:22px;flex:0 0 22px"> start roll call</label>
+                <button class="primary" type="submit">Issue token</button>
+            </form>
+            <p class="notice hidden" id="newToken" style="text-align:left"></p>
+            <div id="deviceList" style="margin-top:10px"></div>
 
             <h2 style="margin-top:24px">Presence — phones &amp; key tags</h2>
             <p class="muted">Belt and braces: a phone on the office Wi-Fi and a BLE tag on the keys. Either one seen

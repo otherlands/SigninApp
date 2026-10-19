@@ -93,8 +93,9 @@ Plug the USB power in. The board's built-in RGB LED tells you the state:
 | **purple** | connecting to Wi-Fi (first 10–20 s) |
 | **dim blue** | ready — reader is idle and waiting for a card |
 | **green flash** | card accepted: the person was signed in/out on the register |
-| **orange flash** | card refused (unknown card, server unreachable, or the API token is wrong) — see step 6 |
-| **red for 3 s** | roll call started from the button |
+| **orange flash** | card not confirmed: unknown card or wrong API token (refused), or server unreachable (the tap is **kept** and sent automatically when the server answers again, with the time it really happened) — see step 6 |
+| **red for 3 s** | roll call started from the button — the server confirmed it |
+| **red blinking** | the button was held but the server has not confirmed the roll call yet; the reader keeps retrying every 3 s for up to 15 min. **Do not rely on it — start the roll call from a phone too** |
 | **orange steady at boot** | PN532 not found — go back to steps 1–2 (switches or wiring) |
 
 If the LED never goes dim blue after a minute, check the Wi-Fi: the board only joins the **IOT**

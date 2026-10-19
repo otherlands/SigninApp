@@ -36,6 +36,27 @@ static unsigned long lastNfcProbe = 0;
 static unsigned long lastStatus = 0;
 static bool serverChecked = false;
 
+// Fire button: a press is a promise to start a roll call. If Wi-Fi or the server is down it is retried every
+// FIRE_RETRY_MS until a 2xx, for up to FIRE_GIVE_UP_MS, with the LED blinking red so nobody walks away thinking it worked.
+#define FIRE_RETRY_MS 3000
+#define FIRE_GIVE_UP_MS (15UL * 60UL * 1000UL)
+static bool firePending = false;
+static unsigned long fireRequestedAt = 0;
+static unsigned long lastFireAttempt = 0;
+
+// Card taps that could not be delivered (no Wi-Fi / server down / 5xx) wait here and are replayed in order with
+// "ageMs" so the server records when the tap really happened. eventKey makes replays idempotent.
+struct PendingTap
+{
+    String uid;
+    uint32_t key;
+    unsigned long at;
+};
+#define TAP_QUEUE_LEN 16
+static PendingTap tapQueue[TAP_QUEUE_LEN];
+static int tapHead = 0, tapCount = 0;
+static unsigned long lastTapRetry = 0;
+
 enum Led
 {
     LED_OFF,
@@ -172,6 +193,42 @@ String uidToHex(const uint8_t *uid, uint8_t len)
     return s;
 }
 
+// POST one tap. Returns the HTTP status (-1 = not sent).
+int sendTap(const PendingTap &t)
+{
+    String body = "{\"cardUid\":\"" + t.uid + "\",\"source\":\"esp32\",\"device\":\"" DEVICE_NAME "\",\"eventKey\":\"" DEVICE_NAME "-" + String(t.key) + "\",\"ageMs\":" + String(millis() - t.at) + "}";
+    return postJson("/api/sign", body);
+}
+// Worth retrying: never sent, or the server failed. A 4xx (unknown card, bad token) will not improve with time.
+bool retryable(int status) { return status <= 0 || status >= 500; }
+
+void queueTap(const PendingTap &t)
+{
+    if (tapCount == TAP_QUEUE_LEN)
+    { // full: drop the oldest, the newest taps matter most for "who is inside now"
+        tapHead = (tapHead + 1) % TAP_QUEUE_LEN;
+        tapCount--;
+    }
+    tapQueue[(tapHead + tapCount) % TAP_QUEUE_LEN] = t;
+    tapCount++;
+    LOG("[tap] queued %s (%d waiting)\n", t.uid.c_str(), tapCount);
+}
+
+void drainTapQueue()
+{
+    if (!tapCount || WiFi.status() != WL_CONNECTED || millis() - lastTapRetry < 5000)
+        return;
+    lastTapRetry = millis();
+    while (tapCount)
+    {
+        int status = sendTap(tapQueue[tapHead]);
+        if (retryable(status))
+            return;
+        tapHead = (tapHead + 1) % TAP_QUEUE_LEN;
+        tapCount--;
+    }
+}
+
 void handleCard(const String &uid)
 {
     if (uid == lastUid && millis() - lastUidAt < CARD_DEBOUNCE_MS)
@@ -180,9 +237,11 @@ void handleCard(const String &uid)
     lastUidAt = millis();
     eventCounter++;
     prefs.putUInt("counter", eventCounter);
-    // eventKey lets the server ignore a retry of the same tap (see /api/sign idempotency).
-    String body = "{\"cardUid\":\"" + uid + "\",\"source\":\"esp32\",\"device\":\"" DEVICE_NAME "\",\"eventKey\":\"" DEVICE_NAME "-" + String(eventCounter) + "\"}";
-    int status = postJson("/api/sign", body);
+    PendingTap t = {uid, eventCounter, millis()};
+    // Keep order: while older taps are waiting, a new one joins the back of the queue.
+    int status = tapCount ? -1 : sendTap(t);
+    if (retryable(status))
+        queueTap(t);
     led(status == 200 ? LED_OK : LED_FAIL);
     delay(status == 200 ? 600 : 1200);
     led(LED_IDLE);
@@ -195,13 +254,35 @@ void handleFireButton()
         buttonDownAt = millis();
     if (down && millis() - buttonDownAt >= FIRE_HOLD_MS && buttonWasDown)
     {
-        led(LED_FIRE);
-        postJson("/api/fire/start", "{\"source\":\"esp32\",\"by\":\"door button\",\"device\":\"" DEVICE_NAME "\"}");
-        delay(3000);
-        led(LED_IDLE);
+        if (!firePending)
+            LOG("[fire] button held: starting a roll call\n");
+        firePending = true;
+        fireRequestedAt = millis();
+        lastFireAttempt = 0;
         buttonDownAt = millis() + 60000; // one press = one roll call; ignore the rest of this hold
     }
     buttonWasDown = down;
+}
+
+void serviceFire()
+{
+    if (!firePending || (lastFireAttempt && millis() - lastFireAttempt < FIRE_RETRY_MS))
+        return;
+    if (millis() - fireRequestedAt > FIRE_GIVE_UP_MS)
+    {
+        LOG("[fire] gave up after %lu min without reaching the server\n", FIRE_GIVE_UP_MS / 60000);
+        firePending = false;
+        return;
+    }
+    lastFireAttempt = millis();
+    int status = postJson("/api/fire/start", "{\"source\":\"esp32\",\"by\":\"door button\",\"device\":\"" DEVICE_NAME "\"}");
+    if (status >= 200 && status < 300)
+    {
+        firePending = false;
+        led(LED_FIRE);
+        delay(3000);
+        led(LED_IDLE);
+    }
 }
 
 #if BLE_SCAN
@@ -218,14 +299,20 @@ static Seen seen[24];
 static int seenN = 0;
 static unsigned long lastBlePost = 0;
 static uint32_t bleBatches = 0, bleTags = 0;
+// onResult runs on the NimBLE host task, blePost on loop(): the buffer is shared, so guard it. The callback never
+// waits for the lock (a dropped frame is re-heard within a second); loop() takes it just long enough to copy out.
+static SemaphoreHandle_t seenLock = nullptr;
 
 void noteTag(const String &tag, int rssi)
 {
+    if (!seenLock || xSemaphoreTake(seenLock, 0) != pdTRUE)
+        return;
     for (int i = 0; i < seenN; i++)
         if (seen[i].tag == tag)
         {
             if (rssi > seen[i].rssi)
                 seen[i].rssi = rssi;
+            xSemaphoreGive(seenLock);
             return;
         }
     if (seenN < (int)(sizeof(seen) / sizeof(seen[0])))
@@ -234,6 +321,7 @@ void noteTag(const String &tag, int rssi)
         seen[seenN].rssi = rssi;
         seenN++;
     }
+    xSemaphoreGive(seenLock);
 }
 
 class ScanCb : public NimBLEScanCallbacks
@@ -263,6 +351,7 @@ static ScanCb scanCb;
 
 void bleBegin()
 {
+    seenLock = xSemaphoreCreateMutex();
     NimBLEDevice::init("");
     NimBLEScan *s = NimBLEDevice::getScan();
     s->setScanCallbacks(&scanCb, false);
@@ -279,17 +368,16 @@ void blePost()
     if (millis() - lastBlePost < BLE_POST_MS)
         return;
     lastBlePost = millis();
-    if (seenN == 0 || WiFi.status() != WL_CONNECTED)
-    {
-        seenN = 0;
-        return;
-    }
+    xSemaphoreTake(seenLock, portMAX_DELAY);
+    int n = seenN;
     String body = "{\"scanner\":\"" SCANNER_NAME "\",\"sightings\":[";
-    for (int i = 0; i < seenN; i++)
+    for (int i = 0; i < n; i++)
         body += String(i ? "," : "") + "{\"tag\":\"" + seen[i].tag + "\",\"rssi\":" + seen[i].rssi + "}";
     body += "]}";
-    int n = seenN;
     seenN = 0;
+    xSemaphoreGive(seenLock);
+    if (n == 0 || WiFi.status() != WL_CONNECTED)
+        return;
     int status = postJson("/api/presence/ble", body);
     if (status == 200)
     {
@@ -321,9 +409,12 @@ void setup()
 }
 
 // Resting colour, re-asserted every loop so the guide's LED table stays true: purple no Wi-Fi, orange no PN532, dim blue ready.
+// A roll-call press that has not reached the server yet overrides everything: red blinking twice a second.
 void steadyLed()
 {
-    if (WiFi.status() != WL_CONNECTED)
+    if (firePending)
+        led((millis() / 250) % 2 ? LED_FIRE : LED_OFF);
+    else if (WiFi.status() != WL_CONNECTED)
         led(LED_NOWIFI);
     else if (HAS_PN532 && !nfcReady)
         led(LED_FAIL);
@@ -335,12 +426,14 @@ void loop()
 {
     ensureWifi();
     handleFireButton();
+    serviceFire();
     steadyLed();
 
     if (WiFi.status() == WL_CONNECTED && !serverChecked)
         checkServer();
     if (WiFi.status() != WL_CONNECTED)
         serverChecked = false;
+    drainTapQueue();
 #if BLE_SCAN
     blePost();
 #endif

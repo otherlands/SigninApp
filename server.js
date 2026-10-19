@@ -1,39 +1,41 @@
 'use strict';
 const http = require('node:http');
 const { createApp } = require('./lib/app');
+const { loadConfig } = require('./lib/config');
 
-const PORT = Number(process.env.PORT || 3000);
-const HOST = process.env.HOST || '0.0.0.0';
+// `node server.js --check-config` prints every configuration problem and exits 0 (fine) or 1 (errors).
+if (process.argv.includes('--check-config')) {
+    const { errors, warnings } = loadConfig();
+    for (const e of errors) console.log(`ERROR    ${e}`);
+    for (const w of warnings) console.log(`warning  ${w}`);
+    console.log(errors.length ? `${errors.length} error(s): the server will refuse to start` : 'configuration OK');
+    process.exit(errors.length ? 1 : 0);
+}
 
-const app = createApp();
+let app;
+try { app = createApp(); } catch (error) {
+    console.error(error.code === 'BAD_CONFIG' ? `eRIGHT sign-in will not start: ${error.message}` : error);
+    process.exit(1);
+}
+const { cfg, log } = app;
 const server = http.createServer((req, res) => app.handle(req, res));
 
-server.listen(PORT, HOST, () => {
-  const mode = app.cfg.replica ? 'MIRROR (read-only)' : 'MAIN';
-  console.log(`[${new Date().toISOString()}] eRIGHT sign-in v3 ${mode} listening on http://${HOST}:${PORT}`);
-  console.log(`  kiosk  http://<ip>:${PORT}/      fire roll call  http://<ip>:${PORT}/fire      admin  http://<ip>:${PORT}/admin`);
-  if (!app.cfg.adminPin) console.log('  ADMIN_PIN not set: /admin is open to anyone on the LAN');
-  if (app.cfg.mirrorUrl) console.log(`  mirroring roster to ${app.cfg.mirrorUrl}`);
-  if (app.sharepoint.configured) console.log(`  SharePoint copy -> ${app.sharepoint.site} / ${app.sharepoint.folder}`);
-  if (app.cfg.teamsWebhookUrl) console.log('  Teams webhook: roll-call start / all-safe / end are posted to the channel');
-  if (app.cfg.publicUrl) console.log(`  public URL for phones/Teams buttons: ${app.cfg.publicUrl}`);
-  if (app.presence.enabledWifi) console.log(`  presence: Wi-Fi brace polling ${app.cfg.unifi.url} every ${app.presence.cfg.wifiPollMs / 1000} s`);
-  else console.log('  presence: Wi-Fi brace off (set UNIFI_URL + UNIFI_API_KEY); BLE scanners may still post to /api/presence/ble');
+server.listen(cfg.port, cfg.host, () => {
+    const mode = cfg.replica ? 'MIRROR (read-only)' : 'MAIN';
+    log.info(`eRIGHT sign-in v${require('./package.json').version} ${mode} listening on http://${cfg.host}:${cfg.port}`);
+    log.info(`kiosk http://<ip>:${cfg.port}/   fire roll call http://<ip>:${cfg.port}/fire   admin http://<ip>:${cfg.port}/admin`);
+    for (const w of app.warnings) log.warn(w);
+    if (cfg.mirrorUrl) log.info(`mirroring roster to ${cfg.mirrorUrl}`);
+    if (app.sharepoint.configured) log.info(`SharePoint copy -> ${app.sharepoint.site} / ${app.sharepoint.folder}`);
+    if (cfg.teamsWebhookUrl) log.info('Teams webhook: roll-call start / all-safe / end are posted to the channel');
+    if (cfg.publicUrl) log.info(`public URL for phones/Teams buttons: ${cfg.publicUrl}`);
+    if (app.presence.enabledWifi) log.info(`presence: phone signal polling ${cfg.unifi.url} every ${app.presence.cfg.wifiPollMs / 1000} s`);
+    else log.info('presence: phone signal off (set UNIFI_URL + UNIFI_API_KEY); tag scanners may still post to /api/presence/ble');
+    log.info(cfg.backupDir ? `backups: ${cfg.backupDir}, nightly at ${String(cfg.backupHour).padStart(2, '0')}:00 ${cfg.timeZone}, keep ${cfg.backupKeep}` : 'backups: OFF (BACKUP_DIR empty)');
+    app.start();
+    log.info(`background jobs: ${[...app.jobs.jobs.keys()].join(', ') || 'none'}`);
 });
 
-if (!app.cfg.replica) {
-  const poll = () => app.presence.pollWifi().then(r => { if (r && r.ok === false) console.log(`[${new Date().toISOString()}] unifi poll failed: ${r.error}`); }).catch(() => { });
-  if (app.presence.enabledWifi) { setInterval(poll, app.presence.cfg.wifiPollMs).unref(); poll(); }
-  // rules also run when nothing new arrives, so absence is noticed on time
-  setInterval(() => { try { app.presence.applyRules(); } catch { } }, 60_000).unref();
-  setInterval(() => { try { app.presence.prune(); } catch { } }, 3600_000).unref();
-}
-
-if (app.hasOutboxSink()) {
-  setInterval(() => app.flushOutbox().catch(() => { }), 15_000).unref();
-  app.flushOutbox().catch(() => { });
-}
-
 for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.on(signal, () => { server.close(); app.close(); process.exit(0); });
+    process.on(signal, () => { server.close(); app.close(); process.exit(0); });
 }

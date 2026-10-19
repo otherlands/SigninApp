@@ -38,11 +38,41 @@ window.SI = (() => {
         tick(); setInterval(tick, 1000);
     }
 
-    function notice(el, text, isError = false, ms = 5000) {
+    function notice(el, text, isError = false, ms = 5000, action = null) {
         el.textContent = text;
+        if (action) {
+            const b = document.createElement('button');
+            b.className = 'small ghost'; b.style.marginLeft = '12px'; b.textContent = action.label;
+            b.onclick = () => { el.textContent = ''; action.run(); };
+            el.append(b);
+        }
         el.classList.toggle('error', isError);
         clearTimeout(el._t);
         if (ms) el._t = setTimeout(() => { el.textContent = ''; el.classList.remove('error'); }, ms);
+    }
+
+    /**
+     * Live updates: the server sends "change" over /api/stream whenever the register changes; `onChange` reloads the
+     * page's view (debounced). Polling every `fallbackMs` stays on as the safety net if the stream drops.
+     */
+    function live(onChange, { fallbackMs = 60_000, debounceMs = 150 } = {}) {
+        let t = null;
+        // debounceMs 0 = act immediately (background tabs clamp timers to >= 1 s, too slow for a roll call).
+        const kick = debounceMs ? () => { clearTimeout(t); t = setTimeout(onChange, debounceMs); } : () => onChange();
+        // A stream holds one of the browser's ~6 connections to this server, so only VISIBLE tabs keep one open:
+        // a pile of hidden tabs (each Teams "Open the roll call" click opens one) must not starve the fire page's ticks.
+        let es = null;
+        const open = () => {
+            if (es || !('EventSource' in window)) return;
+            es = new EventSource('/api/stream');
+            es.addEventListener('change', kick);
+            es.addEventListener('hello', kick);    // (re)connected: catch up at once
+        };
+        const shut = () => { if (es) { es.close(); es = null; } };
+        document.addEventListener('visibilitychange', () => (document.visibilityState === 'visible' ? open() : shut()));
+        window.addEventListener('pagehide', shut);
+        if (document.visibilityState !== 'hidden') open();
+        setInterval(onChange, fallbackMs);
     }
 
     /**
@@ -68,5 +98,5 @@ window.SI = (() => {
         if (statusEl) statusEl.textContent = 'Card reader: ready (USB keyboard-wedge)';
     }
 
-    return { $, esc, fmtTime, fmtWhen, sinceLabel, isToday, api, adminPin, startClock, notice, listenForCardWedge, deviceName };
+    return { $, esc, fmtTime, fmtWhen, sinceLabel, isToday, api, adminPin, startClock, notice, live, listenForCardWedge, deviceName };
 })();
