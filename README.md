@@ -19,7 +19,7 @@ The original one-file JSON version is preserved in git history (`git show 6eab63
 | Piece | State | Evidence |
 | --- | --- | --- |
 | **Server** v3.6 | **LIVE** on Proxmox CT 106 `signin` (Ubuntu 24.04 LXC), `http://192.168.101.102:3000` | `/api/health` 3.6.0 at 21:35Z 2026-09-27 (upgraded from 3.3.0 with `deploy/upgrade-ct106.sh`; db copied to `/root/signin-pre-upgrade-*.sqlite` first); `signin_wifi_enabled 0` until the UniFi key is set |
-| **Server v3.7** (audit fixes, foundations, device tokens, admin sessions, audit trail, live screens; see "v3.7") | **built + tested (44 tests), not yet deployed** — upgrade with `deploy/upgrade-ct106.sh`; schema migrates itself; no env changes needed | `npm test`; local smoke run of `server.js` and headless-browser check of the visitor, tap, kiosk, fire and admin pages 2026-10-19 |
+| **Server v3.7** (audit fixes, foundations, device tokens, admin sessions, audit trail, live screens; see "v3.7") | **LIVE on CT 106 since 2026-10-19 18:30Z** (`5e0b842`, via `deploy/upgrade-ct106.sh`; pre-upgrade db at `/root/signin-pre-upgrade-20261019T183001Z.sqlite`; schema migrated to v5; first backup written) | `/api/health` 3.7.0 `status: ok`, all checks green, 44/44 tests on the box, all pages 200 |
 | **Door-reader firmware v3.7** (fire-button retry, offline tap queue) | **compiled, not yet flashed** | `pio run` 2026-10-19: RAM 15.6 %, flash 29.8 % |
 | **Presence — Wi-Fi brace** | built + tested; **off** until `UNIFI_URL` + read-only `UNIFI_API_KEY` are in `/etc/eright-signin.env` | startup log: `presence: Wi-Fi brace off` |
 | **Presence — BLE brace** | server side live (`/api/presence/ble`); back-door firmware with the NimBLE scan **compiled, not yet flashed** (board off the lead); no tags bought yet; anchor ESP32 not yet built | `deploy/demo-presence.ps1` drove the full walked-in sequence locally 2026-09-27 |
@@ -56,7 +56,7 @@ The original one-file JSON version is preserved in git history (`git show 6eab63
 | `7b998b0` | 2026-09-26 | README: history + current-state summary |
 | `a7b09ac`…`f09c953` | 2026-09-27 | PN532 arrived; WIRING.md/.html with photos; **first real cards read** (back-door reader) |
 | `6558a2f` `de10b26` | 2026-09-27 | **v3.4–3.6 Presence**: Wi-Fi brace (UniFi client list) + BLE brace (key tags heard by door/anchor scanners), direction from scanner sequence, auto sign-in, badge-not-act on absence, auto sign-out only when inference undoes inference and both braces agree; ESP32 firmware BLE scan; Pi BLE scanner; enrolment pickers. **Live on CT 106 21:35Z** via `deploy/upgrade-ct106.sh` |
-| (uncommitted) | 2026-10-19 | **v3.7 audit fixes + foundations** — see "v3.7: audit fixes and foundations" |
+| `5e0b842` | 2026-10-19 | **v3.7 audit fixes + foundations + device tokens + admin sessions + live screens** — see "v3.7: audit fixes and foundations". **Live on CT 106 18:30Z** |
 
 Home: `https://github.com/otherlands/SigninApp` (remote `fork` in the development clone). The original
 `tobygladman2/SigninApp` was disconnected from the development clone on 2026-10-19 and is no longer updated.
