@@ -17,7 +17,16 @@ node --disable-warning=ExperimentalWarning -e 'new (require("node:sqlite").Datab
 bash "$DEST/deploy/install-ubuntu-vm.sh" > /tmp/signin-install.log 2>&1
 RC=$?
 grep -E 'updated|tests:|TESTS FAILED|active|WRITTEN|present|INSTALLED' /tmp/signin-install.log | sed 's/^/  /'
-if [ "$RC" -ne 0 ]; then echo "== installer stopped (exit $RC): nothing restarted, still on ${PREV:0:7}. Log: /tmp/signin-install.log"; exit "$RC"; fi
+NOW=$(sudo -u signin git -C "$DEST" rev-parse HEAD)
+# Decide by whether the code MOVED, not by the installer's exit code: it can fail after the restart (the new version
+# not active yet, a health curl timing out) and that is exactly when the rollback below is needed.
+if [ "$NOW" = "$PREV" ]; then
+  if [ "$RC" -ne 0 ]; then echo "== installer stopped (exit $RC) and the code did not change: still on ${PREV:0:7}. Log: /tmp/signin-install.log"; fi
+  # Same code: if the service is somehow down, starting it again is the only sensible thing.
+  health | grep -q '"ok":true' || { systemctl restart eright-signin; sleep 3; }
+  echo "== after: $(health | cut -c1-80)"; exit "$RC"
+fi
+[ "$RC" -ne 0 ] && echo "== installer exited $RC after moving the code to ${NOW:0:7}: checking health, rolling back if needed"
 OK=""
 for i in $(seq 1 15); do sleep 2; if health | grep -q '"ok":true'; then OK=1; break; fi; done
 if [ -z "$OK" ]; then

@@ -259,13 +259,20 @@ test('Microsoft List ticks: applied once and cleared; MISSING always wins, a Lis
         if (u.endsWith('/lists?$select=id,displayName')) return j({ value: [{ id: 'list1', displayName: 'Sign-in register' }] });
         if (u.endsWith('/columns?$select=name')) return j({ value: cols.map(name => ({ name })) });
         if (u.includes('/items?$expand')) return j({ value: items });
-        if (u.endsWith('/items') && m === 'POST') { const f = JSON.parse(init.body).fields; items.push({ id: String(nextId++), fields: f }); return j({ id: String(nextId - 1) }, 201); }
-        if (/\/items\/\d+\/fields$/.test(u) && m === 'PATCH') { const id = u.match(/items\/(\d+)/)[1]; const it = items.find(x => x.id === id); Object.assign(it.fields, JSON.parse(init.body)); if (it.fields.Tick === null) delete it.fields.Tick; return j(it.fields); }
+        if (u.endsWith('/items') && m === 'POST') { const f = JSON.parse(init.body).fields; const it = { id: String(nextId++), fields: f }; bump(it); items.push(it); return j({ id: it.id }, 201); }
+        if (/\/items\/\d+\/fields$/.test(u) && m === 'PATCH') {
+            const id = u.match(/items\/(\d+)/)[1]; const it = items.find(x => x.id === id);
+            const ifMatch = init.headers?.['If-Match'];
+            if (ifMatch && ifMatch !== it['@odata.etag']) return j({ error: { code: 'resourceModified' } }, 412);
+            Object.assign(it.fields, JSON.parse(init.body)); if (it.fields.Tick === null) delete it.fields.Tick; bump(it); return j(it.fields);
+        }
         if (/\/items\/\d+$/.test(u) && m === 'DELETE') { const id = u.match(/items\/(\d+)/)[1]; items = items.filter(x => x.id !== id); return new Response(null, { status: 204 }); }
         return j({ error: 'unexpected ' + m + ' ' + u }, 500);
     };
+    let version = 1;
+    const bump = (it) => { it['@odata.etag'] = `"v${version++}"`; it.lastModifiedDateTime = new Date().toISOString(); };
     const { app, call, close } = await boot({ fetch, sharepoint: { tenantId: 't', clientId: 'c', clientSecret: 's', site: 'eright.sharepoint.com:/sites/eRIGHT', list: 'Sign-in register' } });
-    const tick = (key, value, who = 'Marshal Mary') => { const it = items.find(i => i.fields.Key === key); it.fields.Tick = value; it.lastModifiedBy = { user: { displayName: who } }; };
+    const tick = (key, value, who = 'Marshal Mary') => { const it = items.find(i => i.fields.Key === key); it.fields.Tick = value; it.lastModifiedBy = { user: { displayName: who } }; bump(it); };
     try {
         const a = app.store.addPerson('Ann'); const b = app.store.addPerson('Bob'); const c = app.store.addPerson('Cat');
         for (const p of [a, b, c]) await call('POST', '/api/sign', { personId: p.id });
@@ -274,7 +281,15 @@ test('Microsoft List ticks: applied once and cleared; MISSING always wins, a Lis
         tick(`staff:${a.id}`, 'SAFE');
         assert.equal((await app.pullListTicks()).reason, 'no roll call');
         assert.equal(items.find(i => i.fields.Key === `staff:${a.id}`).fields.Tick, undefined);
+        // A SAFE left in the List from before (a drill that just ended, a phone syncing late) never lands on a new roll
+        // call: the server reads the List the moment the roll call starts and discards it.
+        await app.flushOutbox();
+        tick(`staff:${c.id}`, 'SAFE');
         const rc = (await call('POST', '/api/fire/start', { source: 'fire-page' })).json.rollcall;
+        await settle(150);
+        assert.equal(app.store.getRollcall(rc.id).marks.length, 0, 'leftover SAFE discarded');
+        assert.equal(items.find(i => i.fields.Key === `staff:${c.id}`).fields.Tick, undefined, 'and cleared');
+        assert.equal(app.store.getState('listTicks').rollcallId, rc.id);
         await call('POST', '/api/fire/mark', { subjectType: 'staff', subjectId: b.id, status: 'missing', by: 'Alan' });
         await app.flushOutbox();
         tick(`staff:${a.id}`, 'SAFE');            // nobody has marked Ann: applied
@@ -293,7 +308,52 @@ test('Microsoft List ticks: applied once and cleared; MISSING always wins, a Lis
         assert.equal((await app.pullListTicks()).applied, 1);
         assert.equal(app.store.getRollcall(rc.id).marks.find(m => m.subjectId === a.id).status, 'missing');
         assert.equal(app.store.rebuildProjections(), 0, 'List marks are ordinary events');
+        // A row changed between the read and the clear (etag moved) is not cleared: the newer tick is read next time.
+        tick(`staff:${a.id}`, 'SAFE');
+        const read = await app.mslist.readTicks();
+        tick(`staff:${a.id}`, 'MISSING', 'Second Marshal');
+        assert.equal(await app.mslist.clearTicks(read), 0, '412: left alone');
+        assert.equal(items.find(i => i.fields.Key === `staff:${a.id}`).fields.Tick, 'MISSING');
     } finally { await close(); }
+});
+
+test('review fixes: proxied LAN clients are judged on their real address; marks are last-write-wins; retention + rebuild', async () => {
+    // 1. through Caddy (socket = loopback, X-Forwarded-For = the real client)
+    const app = createApp({ dataFile: ':memory:', ...NO_ENV, adminPin: '246810', trustedNets: ['192.168.101.0/24'] });
+    try {
+        assert.equal((await from(app, '127.0.0.1', 'GET', '/', undefined, { 'X-Forwarded-For': '192.168.30.7' })).status, 403, 'IoT client via the domain name');
+        assert.equal((await from(app, '127.0.0.1', 'GET', '/api/people', undefined, { 'X-Forwarded-For': '192.168.30.7', 'X-Admin-Pin': '246810' })).status, 403);
+        assert.equal((await from(app, '127.0.0.1', 'GET', '/', undefined, { 'X-Forwarded-For': '192.168.101.50' })).status, 200, 'office client via the domain name');
+        assert.equal((await from(app, '127.0.0.1', 'GET', '/')).status, 200, 'on the box itself');
+    } finally { app.close(); }
+    // 2. the wall clock steps back between two marks: the later-written mark still wins, live and on rebuild
+    let now = Date.parse('2026-11-03T10:05:00Z');
+    const b = await boot({ now: () => new Date(now) });
+    try {
+        const p = b.app.store.addPerson('Clocky');
+        await b.call('POST', '/api/sign', { personId: p.id });
+        const rc = (await b.call('POST', '/api/fire/start', { source: 'fire-page' })).json.rollcall;
+        await b.call('POST', '/api/fire/mark', { subjectType: 'staff', subjectId: p.id, status: 'safe', by: 'A' });
+        now -= 1000;
+        await b.call('POST', '/api/fire/mark', { subjectType: 'staff', subjectId: p.id, status: 'missing', by: 'B' });
+        assert.equal(b.app.store.getRollcall(rc.id).marks[0].status, 'missing', 'live');
+        assert.equal(b.app.store.rebuildProjections(), 0);
+        assert.equal(b.app.store.getRollcall(rc.id).marks[0].status, 'missing', 'rebuilt');
+        now -= 1000;
+        await b.call('POST', '/api/fire/mark', { subjectType: 'staff', subjectId: p.id, status: 'clear', by: 'B' });
+        assert.equal(b.app.store.getRollcall(rc.id).marks.length, 0);
+        assert.equal(b.app.store.rebuildProjections(), 0);
+        // 3. retention cutting through a roll call (started before the cutoff, marked after it) leaves nothing that
+        //    breaks a rebuild
+        now = Date.parse('2026-11-03T11:20:00Z');
+        await b.call('POST', '/api/fire/mark', { subjectType: 'staff', subjectId: p.id, status: 'safe', by: 'C' });
+        now = Date.parse('2026-11-03T11:30:00Z');
+        await b.call('POST', '/api/fire/end', {});
+        assert.equal(b.app.store.deleteRollcallsBefore('2026-11-03T10:05:00.500Z'), 1, 'started before the cutoff');
+        b.app.store.deleteEventsBefore('2026-11-03T10:05:00.500Z');
+        assert.equal(b.app.store.listEvents({ limit: 100 }).filter(e => e.ref === rc.id).length, 0, 'its events went with it');
+        assert.doesNotThrow(() => b.app.store.rebuildProjections());
+    } finally { await b.close(); }
 });
 
 test('assistant: LLM down = 503 (not 500) and an llm health check; tool output is sanitised data', async () => {

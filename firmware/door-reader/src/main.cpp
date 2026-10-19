@@ -331,10 +331,17 @@ void handleCard(const String &uid)
     prefs.putUInt("counter", eventCounter);
     PendingTap t = {uid, eventCounter, millis(), false, false};
     // Every tap goes through the queue (order kept, mirrored to flash); the network task sends it straight away and
-    // flashes green when the server took it, orange when it did not.
+    // flashes green when the server took it, orange when it did not. If older taps are still waiting, this one cannot
+    // be sent first: say so NOW (orange) so the person does not tap again (a second tap would toggle them back out),
+    // and never flash for it later when nobody is standing there.
     LOCK();
+    bool behind = tapCount > 0;
+    if (behind)
+        t.tried = true;
     queueTap(t);
     UNLOCK();
+    if (behind)
+        flash(LED_FAIL, 1200);
 }
 
 void handleFireButton()
