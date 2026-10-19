@@ -31,11 +31,14 @@ function render(data) {
             : `Started ${fmtWhen(rc.startedAt)}${rc.startedBy ? ' by ' + rc.startedBy : ''} (${rc.source}). Register frozen at that moment.`)
         : (list.replica ? `Mirror copy — last update from main server ${fmtWhen(list.at)}` : `Live register at ${fmtTime(list.at)}${list.loneWorker ? ' — LONE WORKER: one member of staff on site' : ''}`);
     document.body.classList.toggle('allsafe', active && Boolean(rc.allSafe));
-    $('#startBtn').classList.toggle('hidden', active);
-    $('#drillBtn').classList.toggle('hidden', active);
-    $('#endBtn').classList.toggle('hidden', !active);
+    // Served through the public proxy: read-only. Marshal controls are refused by the server from outside anyway.
+    document.body.classList.toggle('public', Boolean(data.public));
+    $('#startBtn').classList.toggle('hidden', active || data.public);
+    $('#drillBtn').classList.toggle('hidden', active || data.public);
+    $('#endBtn').classList.toggle('hidden', !active || data.public);
     $('#stats').classList.toggle('hidden', !active);
-    $('#byWrap').classList.toggle('hidden', !active);
+    $('#byWrap').classList.toggle('hidden', !active || data.public);
+    $('#publicNote').classList.toggle('hidden', !data.public);
     if (active) {
         $('#safeCount').textContent = rc.safe;
         $('#selfCount').textContent = rc.selfMarked ? `(${rc.selfMarked} by phone)` : '';
@@ -66,7 +69,7 @@ function renderRows(el, rows, type, marks, active) {
             item.presence?.state === 'here' ? '<span style="color:var(--in)">📱 phone/tag seen inside</span>' : ''].filter(Boolean).join(' · ');
         row.innerHTML = `<div><strong>${esc(item.name)}</strong><small>${type === 'visitor' ? esc(detail) : detail}${detail ? ' · ' : ''}${esc(sinceLabel(item.since))}</small>
       ${mk ? `<small>${mk.status === 'safe' ? '✔ SAFE' : '✖ MISSING'} at ${fmtTime(mk.at)}${mk.by ? ' by ' + esc(mk.by) : ''}</small>` : ''}</div>`;
-        if (active) {
+        if (active && !view?.public) {
             const marksEl = document.createElement('div');
             marksEl.className = 'marks no-print';
             const queued = queue().find(q => q.subjectType === type && q.subjectId === item.id);

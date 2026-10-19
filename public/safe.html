@@ -27,23 +27,26 @@
     </section>
     <script src="/shared.js"></script>
     <script>
-        // Self-marking: opened from the "I'm SAFE" button on the Teams card, or from a home-screen shortcut.
-        // The phone remembers who you are (same key as /tap). One big button marks you SAFE on the open roll call.
+        // Self-marking: opened from the person's own "I'm SAFE" link (/safe?k=…), issued in Admin and added to the home
+        // screen. The key in the link is the identity: a self-mark can only ever be for the person who holds it. The
+        // page stores the key once and strips it from the address bar.
         const { $, esc, api, fmtTime } = SI;
-        const KEY = 'door-tap-person-id';
+        const KEY = 'safe-key';
         let me;
-        function showPicker() {
-            $('#heading').textContent = 'Who are you?'; $('#message').textContent = 'Your choice is remembered on this phone.';
-            $('#picker').classList.remove('hidden'); $('#change').classList.add('hidden');
-            $('#picker').replaceChildren(...me.people.map(p => {
-                const b = document.createElement('button'); b.className = 'person'; b.innerHTML = `<strong>${esc(p.name)}</strong><span>Use this name</span>`;
-                b.onclick = () => { localStorage.setItem(KEY, p.id); load(); }; return b;
-            }));
+        {
+            const q = new URLSearchParams(location.search);
+            if (q.get('k')) { localStorage.setItem(KEY, q.get('k')); history.replaceState(null, '', location.pathname); }
+        }
+        const key = () => localStorage.getItem(KEY) || '';
+        function noKey() {
+            $('#heading').textContent = 'This phone has no "I\'m SAFE" link';
+            $('#message').textContent = 'Ask the admin for your personal link (Admin → Staff → I\'m SAFE link), open it once on this phone, then add it to your home screen.';
+            $('#picker').replaceChildren(); $('#change').classList.add('hidden');
         }
         function show() {
             $('#company').textContent = me.companyName;
-            if (!me.person) return showPicker();
-            $('#picker').classList.remove('hidden'); $('#change').classList.remove('hidden');
+            if (!me.person) return noKey();
+            $('#picker').classList.remove('hidden');
             $('#heading').textContent = me.person.name;
             if (!me.rollcall) { $('#message').textContent = 'No roll call is running right now.'; $('#picker').replaceChildren(); return; }
             if (!me.rollcall.onRegister) { $('#message').textContent = `A ${me.rollcall.drill ? 'drill' : 'roll call'} started ${fmtTime(me.rollcall.startedAt)} but you were not signed in, so you are not on its register. If you ARE on site, tell the person running it.`; $('#picker').replaceChildren(); return; }
@@ -52,16 +55,16 @@
             const b = document.createElement('button'); b.className = 'person in'; b.innerHTML = '<strong>I\'M SAFE</strong><span>I am outside at the assembly point</span>';
             b.onclick = async () => {
                 b.disabled = true;
-                try { await api('POST', '/api/fire/mark', { subjectType: 'staff', subjectId: me.person.id, status: 'safe', via: 'self' }); if (navigator.vibrate) navigator.vibrate(80); await load(); }
+                try { await api('POST', '/api/fire/mark', { status: 'safe', via: 'self', k: key() }); if (navigator.vibrate) navigator.vibrate(80); await load(); }
                 catch (error) { b.disabled = false; $('#message').textContent = error.message; }
             };
             $('#picker').replaceChildren(b);
         }
         async function load() {
-            try { me = await api('GET', `/api/me?personId=${encodeURIComponent(localStorage.getItem(KEY) || '')}`); show(); }
+            try { me = await api('GET', `/api/me?k=${encodeURIComponent(key())}`); show(); }
             catch { $('#heading').textContent = 'Server unreachable'; $('#message').textContent = 'This phone cannot reach the sign-in server from here. Tell the person running the roll call directly.'; }
         }
-        $('#change').onclick = () => { localStorage.removeItem(KEY); showPicker(); };
+        $('#change').classList.add('hidden');
         load();
         SI.live(load, { fallbackMs: 15_000, debounceMs: 0 });
     </script>

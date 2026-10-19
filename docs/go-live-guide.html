@@ -33,7 +33,7 @@
 
 <div class="cover">
 <h1>eRIGHT Sign-In v4.0 — Go-live guide</h1>
-<p class="muted">For the administrator. Written 19 October 2026 against software commit <code>0a7829d</code>, which is what is running on the server. Each step says what to do, where, what you should see, and how to prove it worked.</p>
+<p class="muted">For the administrator. Written 19 October 2026 against software v4.0.1 (commit noted in the README's history table), which is what is running on the server. Each step says what to do, where, what you should see, and how to prove it worked.</p>
 
 <div class="box"><b>Nothing in this guide is assumed.</b> Every address, file path, command and current state below was read from the repository
 (<code>otherlands/SigninApp</code>), from the live server, or from DNS on 19 October 2026. Where a step happens in a vendor's console
@@ -115,9 +115,9 @@ systemctl restart eright-signin</pre></li>
 <p>Every member of staff, on their phone, on the office Wi-Fi:</p>
 <ul>
 <li>Open <code>http://192.168.101.102:3000/fire</code> and add it to the home screen ("Add to Home Screen" in the browser's share/menu). This is the roll-call page; there is no designated marshal, so everyone has it.</li>
-<li>Open <code>http://192.168.101.102:3000/safe</code>, choose their own name once (remembered on that phone), and add it to the home screen too. This is the one-press <b>I'm SAFE</b> page; the Teams card's first button opens the same page.</li>
+<li><b>Their personal "I'm SAFE" link.</b> In Admin → Staff, press <b>I'm SAFE link</b> on the person's row: the link (<code>…/safe?k=…</code>) is copied to the clipboard and shown. Send it to that person privately (the key in it can only ever mark <i>them</i> safe, nothing else; if a phone is lost press the button again and the old link stops working). They open it once on their phone — the page stores the key and shows their name — then add it to the home screen. The Teams card's <b>I'm SAFE</b> button opens the same page and works on any phone that has opened its link once.</li>
 </ul>
-<div class="note">Until step 6 is done these addresses only work on the office Wi-Fi. On mobile data the pages say "server unreachable" and tell the person to report to whoever is running the roll call in person. That is the honest state today.</div>
+<div class="note">Until step 6 is done these addresses only work on the office Wi-Fi. On mobile data the pages say "server unreachable" and tell the person to report to whoever is running the roll call in person. That is the honest state today. Issue the links <i>after</i> step 6e if you can, so they already carry the https address; links issued before carry the LAN address and must be reissued.</div>
 <p>Print a QR code to <code>http://192.168.101.102:3000/fire</code> for the assembly-point sign (after step 6, reprint it with the https name).</p>
 
 <!-- ============================================================ -->
@@ -180,7 +180,7 @@ After the reboot the screen shows the sign-in page full-screen and never blanks.
 <p><b>Why:</b> three things need it. (1) Staff phones on mobile data can reach <code>/fire</code> and <code>/safe</code> at the assembly point. (2) The fire page's <b>offline copy</b> (it opens and shows the last register even with the server dead) only works over HTTPS. (3) The admin login cookie is sent encrypted.</p>
 <p><b>Facts checked on 19 Oct 2026:</b> <code>signin.eright.co.uk</code> has no public DNS record; <code>eright.co.uk</code>'s nameservers are GoDaddy's (<code>ns13</code>/<code>ns14.domaincontrol.com</code>); inside the office the UniFi gateway (192.168.101.1) answers <code>192.168.101.168</code> for that name and nothing exists at .168; the office's public address was <code>46.37.62.121</code>; nothing listens on ports 80/443 on the server.</p>
 
-<div class="box"><b>Decide this first.</b> Once the name points at the server from the internet, <code>/fire</code> (no login: names of who is on site, start/tick/end a roll call) and <code>/safe</code> are reachable by anyone who finds the address, not just staff. The admin page is PIN-protected with lockout; the register is not. Options: accept it (the pages hold names and times only); or restrict in Caddy by IP or basic auth; or reach the server through a VPN instead and skip the public record. The guide continues with the public route because that is what was asked for, but it is your call.</div>
+<div class="box"><b>What comes through from the internet — the one proxy order.</b> Caddy (installed in 6d) looks at where each request comes from. From the <b>office network</b> the name gives full access, same as the LAN address. From the <b>internet</b> exactly this is allowed and nothing else: the roll-call page (<code>/fire</code>), the "I'm SAFE" page (<code>/safe</code>), the files they load, reading the roll call (<code>/api/fire</code>, <code>/api/me</code>, the live stream) and <b>one write</b> — a person marking <i>themselves</i> safe with their personal key. Admin, kiosk, visitor pages, sign-in, start/end roll call, marshal ticks, metrics, export: all answer <code>403 Not available from outside the office</code>. The app checks the same list a second time, so a mistake in the proxy cannot open anything. Names of who is on site are still readable by anyone who finds the address: that is the residual exposure, and it is a read. This was proven on 19 Oct 2026 with a real Caddy against the live server: 12 allowed requests through, 26 refused.</div>
 
 <h3>6a. Public DNS (GoDaddy)</h3>
 <p>In GoDaddy's DNS management for <code>eright.co.uk</code>, add an <b>A record</b>: name <code>signin</code>, value the office's public IPv4 address (<code>46.37.62.121</code> as seen on 19 Oct — confirm it is static with the ISP; if it can change you need dynamic DNS or the DNS-01 variant in <code>deploy/Caddyfile</code>), TTL short (e.g. 600). Wait until <code>nslookup signin.eright.co.uk</code> from a phone on mobile data returns that address.</p>
@@ -195,7 +195,8 @@ After the reboot the screen shows the sign-in page full-screen and never blanks.
 <pre>ssh root@192.168.101.102
 cd /opt/eright-signin && git pull --ff-only
 sudo bash deploy/install-caddy.sh</pre>
-<p>The script installs Caddy, puts <code>deploy/Caddyfile</code> in place (it names <code>signin.eright.co.uk</code> and proxies to the app on :3000), validates it and starts it. Caddy obtains the certificate itself over port 80. If it prints <code>000</code> for the https check, the name or the forward is not right yet: <code>journalctl -u caddy -n 30</code> says which.</p>
+<p>The script installs Caddy, puts <code>deploy/Caddyfile</code> in place (the allow-list above, proxying to the app on :3000), validates it and starts it. Caddy obtains the certificate itself over port 80. If it prints <code>000</code> for the https check, the name or the forward is not right yet: <code>journalctl -u caddy -n 30</code> says which.</p>
+<p><b>Prove the boundary</b> from a phone on mobile data: <code>https://signin.eright.co.uk/admin</code> must say "Not available from outside the office."; <code>/fire</code> must load read-only (no SAFE/MISSING buttons, a note saying so).</p>
 
 <h3>6e. Tell the app its public address</h3>
 <pre>nano /etc/eright-signin.env        # PUBLIC_URL=https://signin.eright.co.uk
@@ -207,8 +208,8 @@ systemctl restart eright-signin</pre>
 <ul>
 <li>On a phone <b>with Wi-Fi off</b>: <code>https://signin.eright.co.uk/fire</code> loads with a padlock; below the buttons it says <b>offline copy: ready</b>.</li>
 <li>Turn the phone to flight mode, reopen the page from the home screen: it still opens and shows "SERVER UNREACHABLE — showing the last register this device saw…".</li>
-<li><code>https://signin.eright.co.uk/safe</code> shows your name and, when a roll call is running, the I'M SAFE button.</li>
-<li>Re-add <code>/fire</code> and <code>/safe</code> to home screens with the new address; reprint the assembly-point QR code.</li>
+<li><code>https://signin.eright.co.uk/safe</code> on a phone that has opened its personal link shows the person's name and, when a roll call is running, the I'M SAFE button. A phone that has not says so and tells them to ask for their link.</li>
+<li>Issue (or reissue) everyone's "I'm SAFE" link now so it carries the https address (step 2c); re-add <code>/fire</code> to home screens with the new address; reprint the assembly-point QR code.</li>
 </ul>
 
 <!-- ============================================================ -->
@@ -265,7 +266,7 @@ systemctl restart eright-signin</pre></li>
 <li>Pick a quiet time. Make sure at least three people are signed in (kiosk or cards).</li>
 <li>On a phone, <code>/fire</code> → <b>Start a DRILL</b> → confirm. (Or on the server: <code>node bin/signinctl.js drill "your name"</code>.)</li>
 <li>Watch: the Teams card arrives (🟠 FIRE DRILL — ROLL CALL STARTED) listing who is on the register; the kiosk shows the red banner; every open <code>/fire</code> page switches to the roll call within a second.</li>
-<li>Ask two people to press <b>I'm SAFE</b> on the Teams card (or their <code>/safe</code> shortcut). The roll-call page shows them ✔ SAFE "by &lt;name&gt; (self)" and the Safe counter says "(2 by phone)".</li>
+<li>Ask two people to press <b>I'm SAFE</b> on the Teams card or their <code>/safe</code> shortcut (their phone must have opened its personal link once, step 2c). The roll-call page shows them ✔ SAFE "by &lt;name&gt; (self)" and the Safe counter says "(2 by phone)".</li>
 <li>Tick the rest SAFE on the roll-call page with your name in the "Your name (marshal)" box. When the last one is ticked the page turns green, ALL n ACCOUNTED FOR, and a green card posts to Teams.</li>
 <li>Press <b>END ROLL CALL</b>. The DRILL ENDED card gives the duration and "All accounted for after n min".</li>
 <li>Admin → <b>Roll-call history</b>: the row says <i>drill</i>, shows self-marks and the time to all-accounted. Keep that for the fire log.</li>
@@ -320,12 +321,11 @@ node bin/signinctl.js restore /opt/eright-signin/data/backups/&lt;file&gt;.sqlit
 <ul class="check">
 <li>Teams webhook regenerated; drill card received (step 1)</li>
 <li>All staff named in Admin; every card assigned; leavers removed (step 2)</li>
-<li>Every staff phone has <code>/fire</code> and <code>/safe</code> on the home screen; assembly-point QR printed (step 2)</li>
+<li>Every staff phone has <code>/fire</code> and its personal "I'm SAFE" link on the home screen; assembly-point QR printed (step 2)</li>
 <li>Device tokens issued for the reader and the kiosk; shared API_TOKEN blanked afterwards (step 3)</li>
 <li>Back-door reader on v4 firmware; card green, button red, both visible in Admin → Log (step 4)</li>
 <li>Front-door kiosk built, on the wall, card reader proven (step 5)</li>
-<li><code>signin.eright.co.uk</code> resolves publicly and on the LAN to the server; https padlock; <code>PUBLIC_URL</code> updated; "offline copy: ready" on a phone (step 6)</li>
-<li>Exposure decision for <code>/fire</code> on the internet taken and recorded (step 6)</li>
+<li><code>signin.eright.co.uk</code> resolves publicly and on the LAN to the server; https padlock; <code>PUBLIC_URL</code> updated; "offline copy: ready" on a phone; <code>/admin</code> from mobile data says "Not available from outside the office." (step 6)</li>
 <li>SharePoint files and Microsoft List updating within 15 s; shortcuts on phones; secret expiry in the diary (step 7)</li>
 <li>Presence configured, or consciously left off (step 8)</li>
 <li>Monitoring deployed on platform-a; alert e-mail received during a drill (step 9)</li>

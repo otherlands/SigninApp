@@ -93,6 +93,17 @@ Also in v4.0:
 - Tests: 55 (`test/v4.test.js` adds the auth matrix, projection fold/rebuild/time-travel, v3.7→v4 migration on a real-shaped database, session persistence, drills + self-marking + cards, acknowledgement versioning, retention, the List sink against a fake Graph, the assistant with both tool-call forms, native TLS with a real certificate, and the review fixes below). A copy of the **live CT 106 database** was migrated v5→v9 before deploying: zero projection drift against its event log, and its register agreed with the running v3.7 server.
 - **Independent review before deploy** found four defects in the v4 code, all fixed and pinned by tests: a tick queued offline could have been replayed onto a *later* roll call (ticks now carry the roll-call id and the server refuses a mismatch); a reader tap restored from flash after a power cut was replayed as "just happened" and could toggle someone out (restored taps are now recorded as `unknown_time_tap`, note only, never applied); `signinctl restore` could leave an empty register if the copy failed (copy-in-then-rename, old file restored on failure); retention anonymised visitors who were still signed in (only signed-out visitors are anonymised).
 
+**The reverse-proxy order (v4.0.1).** When the name goes public, Caddy lets exactly this through from the internet and
+nothing else: the roll-call page (`/fire`, `/rollcall`), the self-marking page (`/safe`), the seven files they load,
+`GET /api/fire`, `GET /api/me`, `GET /api/stream` and `POST /api/fire/mark`. Everything else answers 403 at the proxy.
+From the office network the same name gives full access. Every public request is marked `X-Public: 1`; the app
+enforces the same list a second time (a misconfigured proxy cannot open anything) and from outside accepts only
+**"I'm SAFE" with a personal key**: marshal-style ticks, start and end need the office network. Self-marking is bound
+to a per-person secret everywhere, not just outside: Admin → Staff → **I'm SAFE link** issues (or rotates) each
+person's `/safe?k=…` link; the phone opens it once, stores the key and strips it from the address bar; a self-mark
+can only ever be for the key's owner, whatever the request claims. Proven on 2026-10-19 with a real Caddy binary on
+CT 106 against the live app: 12 allowed requests reached the app, 26 others were refused, the SSE stream flowed.
+
 **Open on the estate side** (nothing in code can do these): the `signin.eright.co.uk` A record or DNS-01 token and the 80/443 forward; the UniFi LAN DNS record (point it at .102); the Entra app registration for `SP_*` + `SP_LIST`; flashing the reader; a drill to try "I'm SAFE" from real phones.
 
 ## v3.7: audit fixes and foundations (2026-10-19)
@@ -191,7 +202,7 @@ On a Proxmox/Ubuntu VM, follow **"Install on Ubuntu, step by step"** below — i
 | `/visitor` | Visitor at the tablet | **Expected today — tap your name** (pre-registered visitors arrive with one tap: name, company, host already filled) or the full form: name, company, who they're visiting, vehicle reg, fire-notice tick box. Issues a daily badge number. |
 | `/fire` | Anyone's phone, any LAN device | Live "who is on site". **START ROLL CALL** freezes the register at that instant; then SAFE / MISSING per person with the ticker's name and time; counts of safe / missing / not yet seen; the banner turns **green "ALL n ACCOUNTED FOR"** the moment every person on the frozen register is marked SAFE; END writes a summary event. The live view says **LONE WORKER** when exactly one member of staff is on site with no visitors. If the server dies mid-fire the page shows the last register **that device** saw, clearly labelled — a fallback only, not relied on (see SharePoint). Print-friendly. |
 | `/admin` | Manager's PC | Add/remove staff, assign card UIDs, close forgotten sign-outs, sign visitors out, **pre-register expected visitors** (next 14 days, shows who has arrived), company name, fire notice, event log, CSV export, roll-call history, off-site copy + Teams status. Optional PIN. |
-| `/safe` | Staff phone (from the Teams card's "I'm SAFE" button or a home-screen shortcut) | One press marks **you** SAFE on the open roll call (`via: self`). Says plainly when the server cannot be reached. v4. |
+| `/safe` | Staff phone (from the person's own "I'm SAFE" link issued in Admin; the Teams card's button opens the same page on a phone that has opened its link once) | One press marks **you** SAFE on the open roll call (`via: self`, bound to your personal key). Says plainly when the server cannot be reached. v4. |
 | `/tap` | Staff phone via NFC sticker | The original SigninApp's zero-hardware path: sticker URL → phone remembers who you are → each tap toggles you. |
 
 ## Run
@@ -719,7 +730,7 @@ flowchart LR
 | GET | `/api/state` | full kiosk state incl. `loneWorker`, `expectedToday`, `publicUrl` |
 | GET | `/api/roster` | who is on site now (staff + visitors) + `loneWorker` (exactly one staff, no visitors) |
 | GET | `/api/register?at=` | admin: time travel — who was signed in at that instant, folded from the event log (v4) |
-| GET | `/api/me?personId=` | self-marking page state (v4) |
+| GET | `/api/me?k=` | self-marking page state; identity from the personal key (v4) |
 | GET | `/api/routes` | admin: the route table with each route's auth (v4) |
 | GET | `/api/stream` | Server-Sent Events: `hello` on connect, `change` `{seq}` whenever the register changes. No PIN (same trust as `/api/state`). |
 | POST | `/api/admin/login` | `{pin}` → 200 + `si_admin` HttpOnly cookie (12 h); 401 wrong PIN; 429 locked out. `POST /api/admin/logout` ends it |
@@ -736,10 +747,10 @@ flowchart LR
 | PATCH | `/api/people/:id` | also accepts `phoneMac`, `tagId` (409 if owned by someone else; `""` clears) |
 | GET | `/api/fire` | open roll call (with marks) + live roster |
 | POST | `/api/fire/start` | `{source, by?, drill?}` → 201, or 200 `alreadyOpen` |
-| POST | `/api/fire/mark` | `{subjectType:"staff"|"visitor", subjectId, status:"safe"|"missing"|"clear", by?, via?:"self"}` (`self` may only say safe) |
+| POST | `/api/fire/mark` | `{subjectType:"staff"|"visitor", subjectId, status:"safe"|"missing"|"clear", by?, rollcallId?}` or `{via:"self", k, status:"safe"}` (the key names the person). From the internet (`X-Public`) only the `self` form is accepted |
 | POST | `/api/fire/end` | `{by?}` |
 | POST | `/api/mirror` | replica intake, `{type:"roster", roster}` |
-| admin | `/api/people` (GET/POST), `/api/people/:id` (PATCH name/cardUid/active, DELETE), `PUT /api/company`, `PUT /api/fire-notice`, `POST /api/stale/close` (`{personId?}` / `{visitorId?}` / all → `{closed, skipped}`; "all" skips staff whose phone or tag is seen inside), `GET /api/events`, `GET /api/export?from&to`, `GET /api/fire/history`, `GET /api/visitors/history`, `POST /api/mirror/flush`, `POST /api/backup` (back up now), `GET /api/devices`, `POST /api/devices` `{name, role, scopes:["sign"|"presence"|"fire"]}` → 201 `{device, token}` (token shown once), `DELETE /api/devices/:id` (revoke), `GET /api/people/:id/timeline`, `POST /api/projections/rebuild`, `POST /api/retention/run`, `POST /api/ask` `{question}` (v4) | |
+| admin | `/api/people` (GET/POST), `/api/people/:id` (PATCH name/cardUid/active, DELETE), `PUT /api/company`, `PUT /api/fire-notice`, `POST /api/stale/close` (`{personId?}` / `{visitorId?}` / all → `{closed, skipped}`; "all" skips staff whose phone or tag is seen inside), `GET /api/events`, `GET /api/export?from&to`, `GET /api/fire/history`, `GET /api/visitors/history`, `POST /api/mirror/flush`, `POST /api/backup` (back up now), `GET /api/devices`, `POST /api/devices` `{name, role, scopes:["sign"|"presence"|"fire"]}` → 201 `{device, token}` (token shown once), `DELETE /api/devices/:id` (revoke), `GET /api/people/:id/timeline`, `POST`/`DELETE /api/people/:id/safe-link` (issue, rotate or revoke a person's "I'm SAFE" link), `POST /api/projections/rebuild`, `POST /api/retention/run`, `POST /api/ask` `{question}` (v4) | |
 
 ## Estate integration — the register on eRIGHT's monitoring rails (v3.2)
 

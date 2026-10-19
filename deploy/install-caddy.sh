@@ -23,4 +23,7 @@ sleep 2
 HOST=$(grep -m1 -oE '^[a-z0-9.-]+\.[a-z]+' /etc/caddy/Caddyfile)
 echo "  public DNS: $(getent ahosts "$HOST" | head -1 || echo 'does not resolve')"
 curl -sk -m 8 -o /dev/null -w "  https://$HOST/api/health -> %{http_code} (000 = no certificate yet: fix DNS/port-forward, then: journalctl -u caddy -n 20)\n" "https://$HOST/api/health" || true
+echo "  From the OFFICE the line above should be 200 (full access). From the INTERNET it must be 403: only /fire, /safe,"
+echo "  their files, GET /api/fire, /api/me, /api/stream and POST /api/fire/mark (self, with a personal key) come through."
+echo "  Check from a phone on mobile data: https://$HOST/admin -> 'Not available from outside the office.'"
 echo "NEXT: set PUBLIC_URL=https://$HOST in /etc/eright-signin.env and: systemctl restart eright-signin"

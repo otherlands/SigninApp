@@ -22,9 +22,18 @@ function render(data) {
         actions.className = 'row';
         const toggle = document.createElement('button'); toggle.className = 'small'; toggle.textContent = p.signedIn ? 'Sign out' : 'Sign in';
         toggle.onclick = () => api('POST', '/api/sign', { personId: p.id, source: 'admin', note: 'admin correction' }).then(d => render(d.state)).catch(showError);
+        const safeLink = document.createElement('button'); safeLink.className = 'small ghost'; safeLink.textContent = "I'm SAFE link";
+        safeLink.title = 'Issue (or rotate) this person\'s personal "I\'m SAFE" link for their phone';
+        safeLink.onclick = () => {
+            if (!confirm(`Issue a new "I'm SAFE" link for ${p.name}? Any earlier link for them stops working.`)) return;
+            api('POST', `/api/people/${p.id}/safe-link`, {}).then(d => {
+                navigator.clipboard?.writeText(d.link);
+                notice(noticeEl, `Link for ${p.name} copied — send it to them privately; they open it once on their phone and add it to the home screen: ${d.link}`, false, 30000);
+            }).catch(showError);
+        };
         const remove = document.createElement('button'); remove.className = 'small ghost'; remove.textContent = 'Remove';
         remove.onclick = () => { if (confirm(`Remove ${p.name} from the kiosk? Their history is kept.`)) api('DELETE', `/api/people/${p.id}`).then(render).catch(showError); };
-        actions.append(toggle, remove);
+        actions.append(toggle, safeLink, remove);
         row.append(actions);
         const cardInput = row.querySelector('input.card');
         cardInput.onkeydown = (e) => {
