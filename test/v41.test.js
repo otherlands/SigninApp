@@ -264,12 +264,13 @@ test('Microsoft List ticks: applied once and cleared; MISSING always wins, a Lis
             const id = u.match(/items\/(\d+)/)[1]; const it = items.find(x => x.id === id);
             const ifMatch = init.headers?.['If-Match'];
             if (ifMatch && ifMatch !== it['@odata.etag']) return j({ error: { code: 'resourceModified' } }, 412);
+            if (JSON.parse(init.body).Tick === null && failClears > 0) { failClears--; return j({ error: { code: 'resourceModified' } }, 412); }
             Object.assign(it.fields, JSON.parse(init.body)); if (it.fields.Tick === null) delete it.fields.Tick; bump(it); return j(it.fields);
         }
         if (/\/items\/\d+$/.test(u) && m === 'DELETE') { const id = u.match(/items\/(\d+)/)[1]; items = items.filter(x => x.id !== id); return new Response(null, { status: 204 }); }
         return j({ error: 'unexpected ' + m + ' ' + u }, 500);
     };
-    let version = 1;
+    let version = 1; let failClears = 0;
     const bump = (it) => { it['@odata.etag'] = `"v${version++}"`; it.lastModifiedDateTime = new Date().toISOString(); };
     const { app, call, close } = await boot({ fetch, sharepoint: { tenantId: 't', clientId: 'c', clientSecret: 's', site: 'eright.sharepoint.com:/sites/eRIGHT', list: 'Sign-in register' } });
     const tick = (key, value, who = 'Marshal Mary') => { const it = items.find(i => i.fields.Key === key); it.fields.Tick = value; it.lastModifiedBy = { user: { displayName: who } }; bump(it); };
@@ -283,13 +284,20 @@ test('Microsoft List ticks: applied once and cleared; MISSING always wins, a Lis
         assert.equal(items.find(i => i.fields.Key === `staff:${a.id}`).fields.Tick, undefined);
         // A SAFE left in the List from before (a drill that just ended, a phone syncing late) never lands on a new roll
         // call: the server reads the List the moment the roll call starts and discards it.
+        // ...even when clearing it fails at first (our own sync touched the row: 412) and the row then looks recent.
         await app.flushOutbox();
         tick(`staff:${c.id}`, 'SAFE');
+        failClears = 1;
         const rc = (await call('POST', '/api/fire/start', { source: 'fire-page' })).json.rollcall;
         await settle(150);
         assert.equal(app.store.getRollcall(rc.id).marks.length, 0, 'leftover SAFE discarded');
-        assert.equal(items.find(i => i.fields.Key === `staff:${c.id}`).fields.Tick, undefined, 'and cleared');
-        assert.equal(app.store.getState('listTicks').rollcallId, rc.id);
+        assert.equal(items.find(i => i.fields.Key === `staff:${c.id}`).fields.Tick, 'SAFE', 'clear failed, still in the List');
+        bump(items.find(i => i.fields.Key === `staff:${c.id}`));            // our own sync moves lastModifiedDateTime
+        let p = await app.pullListTicks();
+        assert.deepEqual(p.discarded, [`staff:${c.id}`], 'still the old tick: discarded again');
+        assert.equal(app.store.getRollcall(rc.id).marks.length, 0);
+        assert.equal(items.find(i => i.fields.Key === `staff:${c.id}`).fields.Tick, undefined, 'and now cleared');
+        assert.deepEqual(app.store.getState('listTicks'), { ...app.store.getState('listTicks'), rollcallId: rc.id, pendingDiscard: [] });
         await call('POST', '/api/fire/mark', { subjectType: 'staff', subjectId: b.id, status: 'missing', by: 'Alan' });
         await app.flushOutbox();
         tick(`staff:${a.id}`, 'SAFE');            // nobody has marked Ann: applied
@@ -312,7 +320,7 @@ test('Microsoft List ticks: applied once and cleared; MISSING always wins, a Lis
         tick(`staff:${a.id}`, 'SAFE');
         const read = await app.mslist.readTicks();
         tick(`staff:${a.id}`, 'MISSING', 'Second Marshal');
-        assert.equal(await app.mslist.clearTicks(read), 0, '412: left alone');
+        assert.deepEqual(await app.mslist.clearTicks(read), { cleared: 0, failed: [read[0].itemId] }, '412: left alone');
         assert.equal(items.find(i => i.fields.Key === `staff:${a.id}`).fields.Tick, 'MISSING');
     } finally { await close(); }
 });

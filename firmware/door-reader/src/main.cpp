@@ -63,7 +63,6 @@ struct PendingTap
 #define TAP_QUEUE_LEN 16
 static PendingTap tapQueue[TAP_QUEUE_LEN];
 static int tapHead = 0, tapCount = 0;
-static unsigned long lastTapRetry = 0;
 static unsigned long fireLedUntil = 0;   // non-blocking "roll call confirmed" red
 
 #ifndef HEARTBEAT_MS
@@ -283,9 +282,12 @@ void queueTap(const PendingTap &t)
     LOG("[tap] queued %s (%d waiting)\n", t.uid.c_str(), tapCount);
 }
 
-// Network task: send the oldest waiting tap. A new tap is tried at once; a failed one every 5 s. The tap is copied out
-// under the lock and sent without it; it is removed afterwards only if it is still the head (the queue may have
-// dropped it meanwhile when full).
+// Network task: send the oldest waiting tap. Taps go straight out one after another while the server answers; only
+// after a FAILED send is there a 5 s pause before retrying. The tap is copied out under the lock and sent without it;
+// it is removed afterwards only if it is still the head (the queue may have dropped it meanwhile when full).
+// LED: green when a tap is delivered on its first attempt; orange once when a send fails, for that tap and for every
+// tap already waiting behind it (they will be sent later, with nobody at the door to see a late flash).
+static unsigned long lastTapFail = 0;
 void drainTapQueue()
 {
     while (true)
@@ -297,13 +299,13 @@ void drainTapQueue()
             return;
         }
         PendingTap head = tapQueue[tapHead];
-        bool due = !head.tried || millis() - lastTapRetry >= 5000;
+        bool due = !lastTapFail || millis() - lastTapFail >= 5000;
         UNLOCK();
         if (!due)
             return;
         int status = sendTap(head);
+        bool announce = false;
         LOCK();
-        lastTapRetry = millis();
         bool stillHead = tapCount && tapQueue[tapHead].key == head.key;
         if (stillHead && !retryable(status))
         {
@@ -311,16 +313,32 @@ void drainTapQueue()
             tapCount--;
             saveQueue();
         }
-        else if (stillHead)
-            tapQueue[tapHead].tried = true;
-        UNLOCK();
-        if (!head.tried) // feedback for the person at the door, once per tap
-            flash(status == 200 ? LED_OK : LED_FAIL, status == 200 ? 600 : 1200);
         if (retryable(status))
+        {
+            lastTapFail = millis();
+            for (int i = 0; i < tapCount; i++)
+            {
+                PendingTap &q = tapQueue[(tapHead + i) % TAP_QUEUE_LEN];
+                if (!q.tried)
+                {
+                    q.tried = true;
+                    announce = true;
+                }
+            }
+        }
+        else
+            lastTapFail = 0;
+        UNLOCK();
+        if (retryable(status))
+        {
+            if (announce)
+                flash(LED_FAIL, 1200);
             return;
+        }
+        if (!head.tried) // delivered on its first attempt: tell the person at the door
+            flash(status == 200 ? LED_OK : LED_FAIL, status == 200 ? 600 : 1200);
     }
 }
-
 void handleCard(const String &uid)
 {
     if (uid == lastUid && millis() - lastUidAt < CARD_DEBOUNCE_MS)
@@ -331,16 +349,16 @@ void handleCard(const String &uid)
     prefs.putUInt("counter", eventCounter);
     PendingTap t = {uid, eventCounter, millis(), false, false};
     // Every tap goes through the queue (order kept, mirrored to flash); the network task sends it straight away and
-    // flashes green when the server took it, orange when it did not. If older taps are still waiting, this one cannot
-    // be sent first: say so NOW (orange) so the person does not tap again (a second tap would toggle them back out),
-    // and never flash for it later when nobody is standing there.
+    // flashes green when the server took it, orange when it did not. If the oldest waiting tap has already FAILED
+    // (server unreachable), this one cannot get through either: say so NOW (orange) so the person does not tap again
+    // (a second tap would toggle them back out), and never flash for it later when nobody is standing there.
     LOCK();
-    bool behind = tapCount > 0;
-    if (behind)
+    bool stuck = tapCount > 0 && tapQueue[tapHead].tried;
+    if (stuck)
         t.tried = true;
     queueTap(t);
     UNLOCK();
-    if (behind)
+    if (stuck)
         flash(LED_FAIL, 1200);
 }
 

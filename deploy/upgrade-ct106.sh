@@ -27,8 +27,11 @@ if [ "$NOW" = "$PREV" ]; then
   echo "== after: $(health | cut -c1-80)"; exit "$RC"
 fi
 [ "$RC" -ne 0 ] && echo "== installer exited $RC after moving the code to ${NOW:0:7}: checking health, rolling back if needed"
+# Healthy = answering ok:true AND running the version now checked out (an installer that moved the code but failed
+# before the restart leaves the OLD process answering ok:true).
+WANT=$(sudo -u signin node -p "require('$DEST/package.json').version")
 OK=""
-for i in $(seq 1 15); do sleep 2; if health | grep -q '"ok":true'; then OK=1; break; fi; done
+for i in $(seq 1 15); do sleep 2; if health | grep -q "\"ok\":true,\"version\":\"$WANT\""; then OK=1; break; fi; done
 if [ -z "$OK" ]; then
   echo "== NEW VERSION DID NOT COME UP HEALTHY — rolling back to ${PREV:0:7} and the pre-upgrade database"
   journalctl -u eright-signin -n 15 --no-pager -o cat | sed 's/^/  /'
