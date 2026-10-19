@@ -1,4 +1,4 @@
-# eRIGHT Sign-In v4.0 — staff & visitor register with fire roll call
+# eRIGHT Sign-In v4.1 — staff & visitor register with fire roll call
 
 Small LAN system for a single door: 8 staff, visitors, and — because eRIGHT has **no designated
 fire marshal** — a register that anyone at the assembly point can open on a phone and that is
@@ -19,9 +19,10 @@ The original one-file JSON version is preserved in git history (`git show 6eab63
 | Piece | State | Evidence |
 | --- | --- | --- |
 | **Server** v3.6 | **LIVE** on Proxmox CT 106 `signin` (Ubuntu 24.04 LXC), `http://192.168.101.102:3000` | `/api/health` 3.6.0 at 21:35Z 2026-09-27 (upgraded from 3.3.0 with `deploy/upgrade-ct106.sh`; db copied to `/root/signin-pre-upgrade-*.sqlite` first); `signin_wifi_enabled 0` until the UniFi key is set |
+| **Server v4.1** (see "v4.1") | **LIVE on CT 106 since 2026-10-19 22:48Z** (`ef6b878`; pre-upgrade db `/root/signin-pre-upgrade-20261019T224833Z.sqlite`, env backup `/root/eright-signin.env.pre-v41`; schema v11) | 69/69 tests on the box before the restart; every health check ok; first off-box push `aiadmin@192.168.102.100:signin-Mon.sqlite` 22:48:55Z; restore drill ok (integrity ok, schema 11, 0 drift, 73 events); checkout pulls over the read-only deploy key; Caddy v2.11.7 test on the box: allow-list holds, outside `/api/fire` has no company/host/vehicle/badge, key and PIN 0 times in its log |
 | **Server v4.0** (see "v4.0") | **LIVE on CT 106 since 2026-10-19 20:36Z, v4.0.1 since 21:02Z** (`aaaff37`; pre-upgrade db `/root/signin-pre-upgrade-20261019T203605Z.sqlite`, env backup `/root/eright-signin.env.pre-v4`; schema v9; `RETENTION_DAYS=2190`, assistant on fast-a) | 55/55 tests on the box; `signinctl status` all checks ok; every page 200; the live `attendance_current` projection equals a fold of the pre-upgrade event log (9 subjects); retention's first run touched nothing; a real question answered by fast-a from a tool call in 11 s |
 | **Server v3.7** (audit fixes, foundations, device tokens, admin sessions, audit trail, live screens; see "v3.7") | superseded by v4.0 (was live 18:30Z–20:36Z 2026-10-19) | |
-| **Door-reader firmware v3.7** (fire-button retry, offline tap queue) | **compiled, not yet flashed** | `pio run` 2026-10-19: RAM 15.6 %, flash 29.8 % |
+| **Door-reader firmware v4.1** (network task, heartbeat, BLE off by default; includes v3.7 fire-button retry + offline tap queue) | **compiled, not yet flashed** | `pio run` 2026-10-19: BLE off RAM 14.3 % / flash 26.6 %, BLE on RAM 15.6 % / flash 29.9 %; CI builds both |
 | **Presence — Wi-Fi brace** | built + tested; **off** until `UNIFI_URL` + read-only `UNIFI_API_KEY` are in `/etc/eright-signin.env` | startup log: `presence: Wi-Fi brace off` |
 | **Presence — BLE brace** | server side live (`/api/presence/ble`); back-door firmware with the NimBLE scan **compiled, not yet flashed** (board off the lead); no tags bought yet; anchor ESP32 not yet built | `deploy/demo-presence.ps1` drove the full walked-in sequence locally 2026-09-27 |
 | Staff names, company, fire notice | **not yet entered** | Admin → PIN (from the install log) |
@@ -58,11 +59,93 @@ The original one-file JSON version is preserved in git history (`git show 6eab63
 | `a7b09ac`…`f09c953` | 2026-09-27 | PN532 arrived; WIRING.md/.html with photos; **first real cards read** (back-door reader) |
 | `6558a2f` `de10b26` | 2026-09-27 | **v3.4–3.6 Presence**: Wi-Fi brace (UniFi client list) + BLE brace (key tags heard by door/anchor scanners), direction from scanner sequence, auto sign-in, badge-not-act on absence, auto sign-out only when inference undoes inference and both braces agree; ESP32 firmware BLE scan; Pi BLE scanner; enrolment pickers. **Live on CT 106 21:35Z** via `deploy/upgrade-ct106.sh` |
 | `5e0b842` | 2026-10-19 | **v3.7 audit fixes + foundations + device tokens + admin sessions + live screens** — see "v3.7: audit fixes and foundations". **Live on CT 106 18:30Z** |
+| `41f1dec` `671136b` `ef6b878` | 2026-10-19 | **v4.1** — marks as events, one write path, off-box backup, restore drill, outside checks + heartbeat, trusted networks, fragment safe links, List ticks, chaser, reader network task, test-gated install with rollback, browser e2e; two review rounds — see "v4.1". **Live on CT 106 22:48Z** |
 | `7a459d5` `0a7829d` `aaaff37` | 2026-10-19 | **v4.0 / v4.0.1** — route table, event-sourced attendance, persisted sessions, drills, self-marking, offline fire page, Microsoft List sink, retention, register assistant, `signinctl`, firmware NVS queue — see "v4.0". **Live on CT 106 20:36Z** |
 
 Home: `https://github.com/otherlands/SigninApp` (remote `fork` in the development clone). The original
 `tobygladman2/SigninApp` was disconnected from the development clone on 2026-10-19 and is no longer updated.
 Developed for eRIGHT Ltd, 8 staff, one door.
+
+## v4.1 (2026-10-19/20)
+
+Built from the third full audit (findings C1–C12, an 18-step plan). Everything below is in commits `41f1dec`, `671136b`
+(fixes from an independent review) and `ef6b878` (fixes from the re-review). What still needs a person, a console or a
+decision is in `docs/go-live-guide.html` (and its PDF), marked as yours.
+
+**Life-safety core**
+- **Roll-call marks are events.** Every SAFE / MISSING / clear is written to the event log with the roll call it
+  belongs to (`events.ref`) and who made it (`events.actor`), and `rollcall_marks` is rebuilt from the log like
+  attendance (schema v11; the migration backfills both columns for existing marks). The last *written* mark wins,
+  live and on rebuild, so a wall clock stepping back can never hide a later MISSING. `POST /api/projections/rebuild`
+  reports drift for marks too.
+- **One write path** (`lib/commands.js`): sign in/out, visitor arrival/departure, roll-call start/mark/end and stale
+  closing are the only code that writes register facts, each in a transaction (`store.withTx`, nested via savepoints);
+  notifications go out after commit.
+- **"I'm SAFE" key in the link's #fragment** (`/safe#k=…`): browsers never send a fragment, so the key is in no server
+  or proxy log; the page sends it only in an `X-Safe-Key` header and keeps it in the address bar so "Add to Home Screen"
+  keeps it. `?k=` is no longer accepted by the API. The fire page has its own `fire.webmanifest` (start URL `/fire`).
+- **Outside the office, names and marks only**: `/api/fire` from the proxy (or an untrusted network) carries no
+  company, host, vehicle or badge.
+- **Roll-call chaser**: while anyone is unaccounted for, the names are re-posted to Teams every `CHASER_MINUTES` (3)
+  up to `CHASER_MAX` (10) times.
+- **Microsoft List ticks** (two-way): a `Tick` choice column (SAFE / MISSING) is a one-shot command — the server reads
+  it every 30 s during a roll call, applies it as a mark (`via list`, "<name> (Microsoft List)") and clears it. A List
+  tick may always say MISSING; it may say SAFE only for someone nobody else has marked; a SAFE already in the List when
+  the roll call starts (read at once) is discarded and stays discarded until its clear succeeds. **Pinned against a
+  fake Graph only; not yet run against the real tenant.** Residual, recorded: an edit made offline in the Lists app
+  during one roll call and synced during the next would look like a new tick.
+
+**Ops and resilience**
+- **Off-box backup**: after every backup, `rsync` over ssh to `BACKUP_PUSH_TARGET` as `signin-<Weekday>.sqlite`
+  (seven rolling copies), with a pinned host key and a key that the target restricts to write-only into one directory.
+- **Weekly restore drill**: the newest backup is copied to a scratch file, opened, integrity-checked and refolded;
+  any drift or corruption fails the `restore-drill` health check. `POST /api/restore-drill/run` runs it now.
+- **Outside checks** (hourly, `lib/ops.js`): LAN and public DNS for the public name, certificate days left, SharePoint
+  secret expiry (`SP_SECRET_EXPIRES`), and devices that have gone silent (`EXPECT_DEVICES`; readers now `POST
+  /api/heartbeat` every 5 min). A change (bad or recovered) posts once to a separate **ops** Teams channel
+  (`OPS_TEAMS_WEBHOOK_URL`). `HEARTBEAT_URL`: the server pings an outside watcher every `HEARTBEAT_MINUTES`.
+- **`TRUSTED_NETS`**: LAN addresses outside these subnets get only what the internet gets (fire page, assembly view,
+  self-marks) plus device routes *with a token*; never Admin or token-less kiosk/marshal writes. A request that came
+  through the local Caddy is judged on the client's address, not on loopback.
+- **SSE caps**: `STREAM_MAX` (300) in total, `STREAM_MAX_PER_IP` (4) from outside.
+- **Assistant**: model unreachable = 503 with a plain message (was 500) and an `llm` health check probed every 10 min;
+  tool output is sanitised (control characters stripped, strings capped) and the prompt treats it as data.
+- **Presence is OFF by default** (`PRESENCE=on` to use it); with it off no Wi-Fi/BLE job runs and BLE posts get 409.
+  The Pi BLE scanner (`deploy/kiosk-pi/ble-scanner.py`) was removed.
+- **Caddy log filter**: `X-Safe-Key`, `X-Admin-Pin`, `X-Api-Token`, `X-Mirror-Token` and a `?k=` query are deleted
+  from Caddy's request log. Validated with Caddy v2.11.7 on CT 106: the secret and the PIN appear 0 times in the log.
+- **Installer gates on tests**: a failing test puts the checkout back and restarts nothing.
+  **`upgrade-ct106.sh` rolls back**: if the new version does not answer `ok:true` with the new version number within
+  30 s, the previous commit *and* the pre-upgrade database snapshot go back (a newer schema is refused by older code).
+
+**Screens**: Admin's health block opens with a one-line verdict (all checks pass / which fail) and shows off-box
+backup, restore drill, heartbeat, assistant and presence; per-person **History**; **Give last tapped card** (no
+copy/paste). Kiosk: **name search** (a card swiped into the box is still treated as a card).
+
+**Door reader firmware**: every HTTP call (taps, fire start, BLE batches, health check, heartbeat) runs in one FreeRTOS
+task on core 0; `loop()` only reads the button and the PN532 and drives the LED, so a dead server can no longer make
+the button or the reader unresponsive. Queued taps drain at full speed; orange means "not delivered yet" at once (no
+late flashes). `BLE_SCAN 0` is the new default. Both variants compile (BLE off: RAM 14.3 %, flash 26.6 %; BLE on:
+RAM 15.6 %, flash 29.9 %); **not flashed** (no ESP32 on a serial port of this PC).
+
+**Repository**: `main` is protected against force-push and deletion (enforced for admins; no required checks).
+`package.json` is `eright-signin` 4.1.0. CI adds a browser end-to-end job and builds both firmware variants.
+
+**Tests**: 69 (`test/v41.test.js` adds 13: marks as events + rebuild, transactions, assembly view, SSE caps, trusted
+nets, off-box push and its failure, restore drill incl. a corrupt file, heartbeat + silent device + ops alerts, chaser,
+List ticks incl. leftover and 412 cases, LLM down, presence off, and the review regressions). **Browser end-to-end**
+(`npm run e2e`, headless Chrome/Edge over the DevTools protocol, no packages): kiosk search + tap; marshal tick;
+`/safe#k=` self-mark with the key never in any request URL; and the **offline fire page** — server stopped, page
+opens from the service worker with the last register, a tick is queued and lands when the server returns. Passing
+locally (Edge) and in CI (Chrome). A copy of the live CT 106 database (v10) migrated to v11: integrity ok, zero
+drift, attendance identical, marks identical except `via` filled in as `fire-page` on two pre-v8 marks (which the app
+already read as `fire-page`). The full suite also passed on CT 106's own Node 22.23.3.
+
+**Reviews**: an independent review of the v4.1 diff found six defects (TRUSTED_NETS bypassable through Caddy; a
+List tick from an earlier roll call could mark someone SAFE; marks ordered by wall clock; retention leaving events
+that broke a rebuild; the rollback skipped when the installer failed after restarting; no LED feedback for a tap
+queued behind a stuck one). All fixed and pinned by tests; a re-review confirmed four and found two gaps (a discarded
+List SAFE returning after a failed clear; a false orange / 5 s pacing in the reader), both fixed.
 
 ## v4.0 (2026-10-19)
 
@@ -819,6 +902,8 @@ enforced per route, name binding, revoke, reissue, bench mode ending, no mirror 
 forged cookie, logout, lockout via the login form), the audit trail (exact entries in order, lockout logged) and
 `/api/stream` (hello, change on a sign-in, silence for scanner chatter, bursts coalesced). The admin login, device
 panel, kiosk Undo and live fire-page update were also driven in headless Edge on 2026-10-19.
+v4.0 added `test/v4.test.js`; v4.1 adds `test/v41.test.js` and the browser journeys in `test/e2e/run.js` (`npm run e2e`,
+run in CI on Chrome) — see "v4.1" for what each covers.
 
 Not tested: the physical card reader driving the kiosk page, a physical webhook button,
 the SharePoint push against the real tenant, a real Prometheus scrape from platform-a, iOS Safari specifics,
@@ -834,10 +919,11 @@ presses), never by the alarm itself.
 - No per-person PIN: on a trusted door tablet anyone can tap anyone's name. Cards or `/tap` fix this if it matters.
 - Admin PIN is a shared secret over plain HTTP on the LAN (brute force is rate-limited and the admin page uses an HttpOnly session cookie, v3.7). Put it behind a reverse proxy with TLS if the network is not trusted.
 - Roll-call START, ticks and END need no credential (no designated marshal); every action records its device.
-- The fire page does not work offline (no HTTPS, so no service worker): roadmap phase 5.
+- The fire page works offline only over HTTPS (service worker, v4.0; proven by the e2e journey). CT 106 is plain HTTP until the public name and Caddy exist (go-live guide step 6), so on the LAN today it does not.
 - Backups larger than 4 MB are kept locally only (Graph simple upload limit); an upload session is not built.
 - The mirror is a roster replica, not a full database replica; roll calls run on the mirror are stored on the mirror.
-- The SharePoint copy is read-only at the assembly point: anyone can see who was inside, nobody can tick names off there.
+- Ticking in the Microsoft List (v4.1) acts only while the server runs and reaches Microsoft, and is proven only against a fake Graph. An edit made offline in the Lists app during one roll call and synced during the next would look like a new tick (a SAFE already present when a roll call starts is discarded; this case is not).
+- The README was not split into `docs/*.md` in v4.1: the go-live guide and code comments refer to its sections by name, and a split would move text without adding anything. Revisit if it grows further.
 - Decided against: running the server on an ESP32 (a full C++ rewrite that would still be inside the building) and a fire-panel relay (no access to the panel).
 - Contractor inductions and photo badges are not built. Pre-registration is (v3.3) but has no e-mail/QR invite to the visitor yet.
 - The Teams card goes to one channel. Per-person push (e.g. SMS to a lone worker's own phone) is not built.

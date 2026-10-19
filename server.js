@@ -41,8 +41,11 @@ server.listen(cfg.port, cfg.host, () => {
     if (cfg.teamsWebhookUrl) log.info('Teams webhook: roll-call start / all-safe / end are posted to the channel');
     if (cfg.publicUrl) log.info(`public URL for phones/Teams buttons: ${cfg.publicUrl}`);
     if (app.presence.enabledWifi) log.info(`presence: phone signal polling ${cfg.unifi.url} every ${app.presence.cfg.wifiPollMs / 1000} s`);
-    else log.info('presence: phone signal off (set UNIFI_URL + UNIFI_API_KEY); tag scanners may still post to /api/presence/ble');
+    else if (!cfg.presence) log.info('presence: OFF (PRESENCE=on to use phone/key-tag signals; tag posts are refused with 409)');
+    else log.info('presence: on; phone signal off (set UNIFI_URL + UNIFI_API_KEY); tag scanners may post to /api/presence/ble');
     log.info(cfg.backupDir ? `backups: ${cfg.backupDir}, nightly at ${String(cfg.backupHour).padStart(2, '0')}:00 ${cfg.timeZone}, keep ${cfg.backupKeep}` : 'backups: OFF (BACKUP_DIR empty)');
+    if (cfg.backupPushTarget) log.info(`off-box backup copy after every backup -> ${cfg.backupPushTarget} (signin-<Weekday>.sqlite)`);
+    log.info(cfg.trustedNets.length ? `trusted networks: ${cfg.trustedNets.join(', ')} (other LAN addresses get the outside view)` : 'trusted networks: all LAN addresses (TRUSTED_NETS not set)');
     log.info(cfg.retentionDays ? `retention: visitor details anonymised and events deleted after ${cfg.retentionDays} days` : 'retention: OFF');
     if (app.assistant) log.info(`assistant: ${cfg.llmModel} at ${cfg.llmUrl} (read-only tools, admin only)`);
     app.start();
