@@ -46,7 +46,14 @@ async function cdpPage(port, url) {
         throw new Error(`timed out waiting for ${what} (last: ${JSON.stringify(last)})`);
     };
     await send('Runtime.enable'); await send('Page.enable');
-    return { send, evaluate, until, reload: () => send('Page.reload', {}), close: () => ws.close() };
+    // A real finger: touchStart + touchEnd at the element's centre (what the kiosk's touch panel produces).
+    const tap = async (selector) => {
+        const r = await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return null; const b = el.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
+        if (!r) throw new Error(`nothing to tap at ${selector}`);
+        await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: r.x, y: r.y }] });
+        await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    };
+    return { send, evaluate, until, tap, reload: () => send('Page.reload', {}), close: () => ws.close() };
 }
 
 async function main() {
@@ -93,13 +100,22 @@ async function main() {
             page.close();
             page = await cdpPage(cdpPort, `${base}/visitor?osk=1`);
             await page.until(`document.querySelector('.osk') !== null`, 'keyboard built');
-            const tap = (k) => page.evaluate(`document.querySelector('.osk button[data-key="${k}"]').click()`);
-            await page.evaluate(`document.querySelector('#name').focus()`);
+            await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+            const tap = (k) => page.tap(`.osk button[data-key="${k}"]`);
+            await page.tap('#name');
             await page.until(`document.querySelector('.osk').classList.contains('show')`, 'keyboard shown on focus');
             for (const k of ['v', 'e', 'r', 'a', 'Space', 'v', 'i', 's', 'i', 't', 'o', 'r', 'Backspace', 'r']) await tap(k);
             const name = await page.evaluate(`document.querySelector('#name').value`);
             if (name !== 'Vera Visitor') throw new Error(`name typed as ${JSON.stringify(name)}`);
-            await page.evaluate(`document.querySelector('#vehicle').focus()`);
+            // Next moves through the text fields (Company, then Vehicle, which sits under the keyboard), the way a visitor does
+            if ((await page.evaluate(`document.querySelector('.osk button[data-key="Enter"]').textContent`)) !== 'Next ↵') throw new Error('Enter key should read Next inside the form');
+            await tap('Enter');
+            if ((await page.evaluate('document.activeElement.id')) !== 'visitorCompany') throw new Error(`after Next, focus is on ${await page.evaluate('document.activeElement.id')}`);
+            for (const k of ['a', 'c', 'm', 'e']) await tap(k);
+            await tap('Enter');
+            if ((await page.evaluate('document.activeElement.id')) !== 'vehicle') throw new Error(`after Next, focus is on ${await page.evaluate('document.activeElement.id')}`);
+            const visibleAboveKeyboard = await page.evaluate(`(() => { const r = document.querySelector('#vehicle').getBoundingClientRect(); const k = document.querySelector('.osk').getBoundingClientRect(); return r.bottom <= k.top && r.top >= 0; })()`);
+            if (!visibleAboveKeyboard) throw new Error('the Vehicle field is hidden under the keyboard');
             for (const k of ['a', 'b', '1', '2']) await tap(k);
             const reg = await page.evaluate(`document.querySelector('#vehicle').value`);
             if (reg !== 'AB12') throw new Error(`vehicle typed as ${JSON.stringify(reg)}`);
@@ -108,13 +124,14 @@ async function main() {
             await page.evaluate(`(() => { const a = document.querySelector('#agree'); if (a && !a.checked) a.click(); document.querySelector('#visitorForm').requestSubmit(); })()`);
             const end = Date.now() + 10_000; let v;
             while (Date.now() < end && !(v = app.store.listVisitors({ presentOnly: true }).find(x => x.name === 'Vera Visitor'))) await sleep(200);
-            if (!v || v.vehicle !== 'AB12') throw new Error(`visitor on the server: ${JSON.stringify(v)}`);
+            if (!v || v.vehicle !== 'AB12' || v.company !== 'Acme') throw new Error(`visitor on the server: ${JSON.stringify(v)}`);
             page.close();
             // remembered for this browser: the kiosk page has it too, and typing filters the names
             page = await cdpPage(cdpPort, `${base}/`);
             await page.until(`document.querySelectorAll('#people .person').length === 3 && document.querySelector('.osk') !== null`, 'kiosk with keyboard');
-            await page.evaluate(`document.querySelector('#search').focus()`);
-            for (const k of ['c', 'a', 'r']) await page.evaluate(`document.querySelector('.osk button[data-key="${k}"]').click()`);
+            await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+            await page.tap('#search');
+            for (const k of ['c', 'a', 'r']) await page.tap(`.osk button[data-key="${k}"]`);
             const visible = await page.evaluate(`[...document.querySelectorAll('#people .person:not(.hidden)')].map(b => b.dataset.name)`);
             if (visible.length !== 1 || visible[0] !== 'cara third') throw new Error(`visible after typing: ${JSON.stringify(visible)}`);
             page.close();

@@ -31,7 +31,7 @@
       .osk-row { display: flex; gap: 6px; margin: 6px 0; justify-content: center; }
       .osk button { flex: 1 1 0; min-width: 0; height: 52px; margin: 0; padding: 0; font-size: 1.35rem; border-radius: 10px;
                     background: #1b2340; color: #fff; border: 1px solid #2f3a62; box-shadow: none; }
-      .osk button:active { background: #3a4a85; }
+      .osk button:active, .osk button.down { background: #3a4a85; }
       .osk button.wide { flex: 2.2 1 0; font-size: 1.05rem; }
       .osk button.space { flex: 7 1 0; }
       .osk button.on { background: #4c5fd5; }`;
@@ -54,8 +54,11 @@
     }
     document.body.append(kb);
 
-    // Never let a key press take focus away from the field being typed into.
-    for (const ev of ['pointerdown', 'mousedown', 'touchstart']) kb.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+    // Keys act on POINTERDOWN, which every finger, mouse and pen press produces. Not on `click`: cancelling touchstart
+    // (needed so a tap never takes focus from the field) also cancels the click a touch would have produced, so a
+    // click-driven key never fires under a finger (found on the kiosk 2026-10-20). mousedown/touchstart are cancelled
+    // only to keep focus in the field and stop the page scrolling or zooming under the keyboard.
+    for (const ev of ['mousedown', 'touchstart']) kb.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
 
     const capsFor = (el) => {
         // Capitalise the first letter of each word in fields that ask for it (names), and the whole vehicle field.
@@ -87,14 +90,26 @@
         if (start !== end) el.setRangeText('', start, end, 'end'); else if (start > 0) el.setRangeText('', start - 1, start, 'end'); else return;
         fireInput();
     };
+    // Inside a form, Enter moves to the next text field (the keyboard covers the lower half of the screen, so the next
+    // field is often under it and cannot be tapped); on the last field it submits. Outside a form it is a plain Enter.
+    const nextField = (el) => {
+        if (!el.form) return null;
+        const fields = [...el.form.elements].filter(eligible);
+        return fields[fields.indexOf(el) + 1] || null;
+    };
     const enter = () => {
         const el = target;
         const ok = el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
-        if (ok && el.form) { hide(); el.form.requestSubmit(); }
+        if (!ok || !el.form) return;
+        const next = nextField(el);
+        if (next) { next.focus({ preventScroll: true }); show(next); return; }
+        hide(); el.form.requestSubmit();
     };
 
-    kb.addEventListener('click', (e) => {
+    kb.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
         const b = e.target.closest('button'); if (!b || !target) return;
+        b.classList.add('down'); setTimeout(() => b.classList.remove('down'), 120);
         const k = b.dataset.key;
         if (document.activeElement !== target) target.focus({ preventScroll: true });
         if (k === 'Hide') { target.blur(); hide(); return; }
@@ -109,8 +124,11 @@
     function show(el) {
         target = el; kb.classList.add('show');
         document.body.style.paddingBottom = `${kb.offsetHeight + 12}px`;
+        kb.querySelector('button[data-key="Enter"]').textContent = nextField(el) ? 'Next ↵' : 'Enter ↵';
         autoShift();
-        el.scrollIntoView({ block: 'center' });
+        // Keep the field in the part of the screen the keyboard does not cover.
+        const r = el.getBoundingClientRect(); const room = window.innerHeight - kb.offsetHeight;
+        if (r.top < 8 || r.bottom > room - 8) window.scrollBy({ top: r.top - Math.max(8, (room - r.height) / 2), behavior: 'instant' });
     }
     function hide() { kb.classList.remove('show'); document.body.style.paddingBottom = ''; target = null; }
 
