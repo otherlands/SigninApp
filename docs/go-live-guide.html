@@ -191,7 +191,8 @@ python tools\listen_door_reader.py COM42 40</pre>
 <p>Parts were ordered from The Pi Hut on 26 Sep 2026 (Pi 5 2 GB, Argon Industria HMI 10CS display + enclosure, Argon PoE+ HAT, THRML cooler, 32 GB SD). The build is written up in the README section <b>"Door kiosk — Raspberry Pi build"</b> and the tick-box bench card <code>docs/pi-kiosk-bench-card.md</code>. In short:</p>
 <ol>
 <li>Flash the SD with Raspberry Pi Imager: <b>Raspberry Pi OS Lite (64-bit)</b>, hostname <code>door-kiosk</code>, a user, <b>SSH enabled</b>, locale Europe/London.</li>
-<li>Assemble: THRML cooler on the Pi (leave the case's passive column out), PoE+ HAT on the header, screen power lead to the HAT's 5 V header, screen ribbon to the DSI port, close the enclosure.</li>
+<li>Assemble: THRML cooler on the Pi (leave the case's passive column out), PoE+ HAT on the header, screen power lead to the HAT's 5 V header, Argon's HMI-HDMI interface board on the Pi's edge (both micro-HDMI ports + USB-C) and the flat-flex from it to the display (end no.1 display, no.2 board, contacts to the white side), close the enclosure. <b>The 10CS is an HDMI display, not DSI</b> (corrected 20 Oct; the earlier text said DSI).
+<br><b>If the 10&quot; panel stays dark while an ordinary HDMI monitor works:</b> put the SD card in a PC and use the one-shot <code>deploy/kiosk-pi/display-diag.sh</code> (instructions at its top). Boot once with both screens attached. It writes <code>display-diag.txt</code> to the card, saying what each HDMI port reported and whether it forced the panel's port on. If the panel is still dark after that, check its 5 V lead and the flat-flex.</li>
 <li>One Ethernet cable from a PoE port on the Corporate network. Give <code>door-kiosk</code> a DHCP reservation in UniFi.</li>
 <li>From a PC: <code>ssh &lt;user&gt;@door-kiosk.local</code>, then
 <pre>git clone https://github.com/otherlands/SigninApp.git ~/SigninApp

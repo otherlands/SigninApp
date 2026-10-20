@@ -97,7 +97,8 @@ IP=$(hostname -I | awk '{print $1}')
 cat <<EOF
 
 KIOSK INSTALLED. The screen should now show the sign-in page. Address of this Pi: $IP
- · Rotate to portrait (Touch Display 2 on the DSI port): add  video=DSI-1:panel_orientation=right_up  to $CMD and reboot
+ · Argon HMI 10CS = HDMI panel. Dark while an HDMI monitor works: deploy/kiosk-pi/display-diag.sh (one-shot, see its header)
+ · Rotate to portrait (Touch Display 2 on the DSI port only): add  video=DSI-1:panel_orientation=right_up  to $CMD and reboot
    (Raspberry Pi docs: "Display rotation" — check the exact token for your OS release).
  · Card reader: plug the USB-203 into the Pi; present an un-enrolled card → page says "Card … is not assigned to anyone".
  · Logs: journalctl -u signin-kiosk -f      Restart page: sudo systemctl restart signin-kiosk

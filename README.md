@@ -664,8 +664,15 @@ red roll-call banner, and as a card-reader fallback.
    `door-kiosk`, a user + password, **enable SSH**, locale `Europe/London`. Wi-Fi is not needed — it will be wired.
 2. **Assemble** (Argon's guide is at wiki.argon40.com → Industria HMI): fit the THRML active cooler to the Pi 5 (**leave the
    case's passive cooling column out** — it and a HAT cannot both fit), seat the PoE+ HAT on the header, plug the HMI
-   screen's power lead into the HAT's 3-pin 5 V header and its ribbon into the Pi's DSI port, then close the Pi into the
-   enclosure. The internal IO board brings Ethernet/USB out on one edge — that edge faces the cable run.
+   screen's power lead into the HAT's 3-pin 5 V header, mate Argon's **HMI-HDMI interface board** to the Pi's edge (it takes
+   both micro-HDMI ports and USB-C) and connect the flat-flex (end no.1 display, no.2 board, contacts to the white side),
+   then close the Pi into the enclosure. The internal IO board brings Ethernet/USB out on one edge — that edge faces the
+   cable run. **The 10CS is an HDMI display, not DSI** (Argon: "10-inch HDMI Display with Enclosure", one HDMI input,
+   either micro-HDMI port can drive it). An earlier version of this step said "DSI port": that was wrong.
+   **Panel dark but an ordinary HDMI monitor works** (seen 2026-10-20): run the one-shot `deploy/kiosk-pi/display-diag.sh`
+   (instructions at its top): it records what each HDMI port reports and, when the panel's port alone reports
+   "disconnected", forces it on with `video=HDMI-A-<n>:1280x800@60D`. Argon's wiki suggests `hdmi_group`/`hdmi_mode`;
+   those are legacy firmware settings, and this image runs the KMS driver (`dtoverlay=vc4-kms-v3d`), which sets display modes from the kernel command line (`video=`).
 3. **Plug in one Ethernet cable** from a PoE port on the Corporate network. The Pi boots (rainbow screen, then text).
 4. **From a PC**: `ssh <user>@door-kiosk.local` (or the address UniFi shows for `door-kiosk`), then:
    ```bash
@@ -677,8 +684,9 @@ red roll-call banner, and as a card-reader fallback.
    token), disables the tty login on the screen, stops console blanking, enables node_exporter on `:9100`, and proves
    the service is active. After the reboot the screen shows the sign-in page and never sleeps.
 5. **Orientation**: the HMI 10CS panel is native landscape 1280×800, so no rotation should be needed for the kiosk page. If it
-   comes up rotated, add `video=DSI-1:panel_orientation=<value>` to `/boot/firmware/cmdline.txt` and reboot (check the exact
-   token against the Raspberry Pi "display rotation" docs for your OS release — not verified here).
+   comes up rotated, the fix is a rotation option on the panel's **HDMI** connector (`HDMI-A-1` or `HDMI-A-2`) in
+   `/boot/firmware/cmdline.txt` — check the exact token against the Raspberry Pi "display rotation" docs for your OS
+   release (not verified here).
 6. **Card reader**: plug the USB-203 into a USB port. Present a card: an un-enrolled one makes the page say "Card … is not
    assigned to anyone" and Admin shows it under "Last unknown card seen" — proof that reader → page → token → server works.
 7. **UniFi**: DHCP reservation for `door-kiosk`. **platform-a**: add the Pi's `:9100` to Prometheus so `up{}` for it can alert

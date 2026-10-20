@@ -74,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: for f in deploy/*.sh deploy/kiosk-pi/install.sh; do bash -n "$f"; done
+      - run: for f in deploy/*.sh deploy/kiosk-pi/*.sh; do bash -n "$f"; done
       # The Windows desktop reminder: parse with PowerShell (pwsh ships on ubuntu runners). It runs for real in
       # test/desktop.test.js on Windows.
       - name: desktop reminder parses
