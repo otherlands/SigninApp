@@ -84,6 +84,41 @@ async function main() {
             page.close();
         });
         await api('POST', '/api/sign', { personId: bob.id, source: 'admin' });
+
+        await step('on-screen keyboard: off by default; with ?osk=1 it types into the visitor form (capitals where asked) and the kiosk search', async () => {
+            let page = await cdpPage(cdpPort, `${base}/visitor`);
+            await page.until(`document.querySelector('#name') !== null`, 'visitor form');
+            await page.evaluate(`document.querySelector('#name').focus()`);
+            if (await page.evaluate(`document.querySelector('.osk') !== null`)) throw new Error('keyboard present without osk=1');
+            page.close();
+            page = await cdpPage(cdpPort, `${base}/visitor?osk=1`);
+            await page.until(`document.querySelector('.osk') !== null`, 'keyboard built');
+            const tap = (k) => page.evaluate(`document.querySelector('.osk button[data-key="${k}"]').click()`);
+            await page.evaluate(`document.querySelector('#name').focus()`);
+            await page.until(`document.querySelector('.osk').classList.contains('show')`, 'keyboard shown on focus');
+            for (const k of ['v', 'e', 'r', 'a', 'Space', 'v', 'i', 's', 'i', 't', 'o', 'r', 'Backspace', 'r']) await tap(k);
+            const name = await page.evaluate(`document.querySelector('#name').value`);
+            if (name !== 'Vera Visitor') throw new Error(`name typed as ${JSON.stringify(name)}`);
+            await page.evaluate(`document.querySelector('#vehicle').focus()`);
+            for (const k of ['a', 'b', '1', '2']) await tap(k);
+            const reg = await page.evaluate(`document.querySelector('#vehicle').value`);
+            if (reg !== 'AB12') throw new Error(`vehicle typed as ${JSON.stringify(reg)}`);
+            await tap('Hide');
+            await page.until(`!document.querySelector('.osk').classList.contains('show')`, 'keyboard hidden');
+            await page.evaluate(`(() => { const a = document.querySelector('#agree'); if (a && !a.checked) a.click(); document.querySelector('#visitorForm').requestSubmit(); })()`);
+            const end = Date.now() + 10_000; let v;
+            while (Date.now() < end && !(v = app.store.listVisitors({ presentOnly: true }).find(x => x.name === 'Vera Visitor'))) await sleep(200);
+            if (!v || v.vehicle !== 'AB12') throw new Error(`visitor on the server: ${JSON.stringify(v)}`);
+            page.close();
+            // remembered for this browser: the kiosk page has it too, and typing filters the names
+            page = await cdpPage(cdpPort, `${base}/`);
+            await page.until(`document.querySelectorAll('#people .person').length === 3 && document.querySelector('.osk') !== null`, 'kiosk with keyboard');
+            await page.evaluate(`document.querySelector('#search').focus()`);
+            for (const k of ['c', 'a', 'r']) await page.evaluate(`document.querySelector('.osk button[data-key="${k}"]').click()`);
+            const visible = await page.evaluate(`[...document.querySelectorAll('#people .person:not(.hidden)')].map(b => b.dataset.name)`);
+            if (visible.length !== 1 || visible[0] !== 'cara third') throw new Error(`visible after typing: ${JSON.stringify(visible)}`);
+            page.close();
+        });
         const rc = (await api('POST', '/api/fire/start', { source: 'fire-page', by: 'e2e' })).rollcall;
 
         await step('fire page: a marshal SAFE tick reaches the register', async () => {

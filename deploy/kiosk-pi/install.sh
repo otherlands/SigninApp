@@ -40,7 +40,8 @@ for dm in lightdm gdm3 sddm greetd; do systemctl disable --now "$dm" >/dev/null 
 systemctl set-default multi-user.target >/dev/null 2>&1 || true
 
 echo "== 3 kiosk unit =="
-START="$URL/?device=$DEV"; [ -n "$TOK" ] && START="$START&cardToken=$TOK"
+# osk=1: the pages show their own on-screen keyboard on this device (cage has none; Chromium has none on Linux)
+START="$URL/?device=$DEV&osk=1"; [ -n "$TOK" ] && START="$START&cardToken=$TOK"
 cat > /etc/systemd/system/signin-kiosk.service <<EOF
 # eRIGHT door kiosk — Chromium full-screen on the sign-in page inside cage. Installed by deploy/kiosk-pi/install.sh $(date -u +%FT%TZ)
 [Unit]
