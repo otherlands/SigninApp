@@ -58,10 +58,12 @@ StandardOutput=journal
 StandardError=journal
 Environment=WLR_LIBINPUT_NO_DEVICES=1
 Environment=XDG_SESSION_TYPE=wayland
-# cage exits when chromium exits; Restart=always brings the page back in seconds
+# cage exits when chromium exits; Restart=always brings the page back in seconds.
+# --password-store=basic: on a Desktop image Chromium otherwise opens a "Choose password for new keyring" dialog that
+# sits over the page forever (seen on the front-door Pi 2026-10-20). A kiosk stores no passwords.
 ExecStart=/usr/bin/cage -- $CHROME --kiosk --noerrdialogs --disable-infobars --no-first-run --ozone-platform=wayland \\
   --touch-events=enabled --overscroll-history-navigation=0 --disable-pinch --disable-translate --disable-session-crashed-bubble \\
-  --check-for-update-interval=31536000 --autoplay-policy=no-user-gesture-required --start-fullscreen "$START"
+  --check-for-update-interval=31536000 --autoplay-policy=no-user-gesture-required --password-store=basic --start-fullscreen "$START"
 Restart=always
 RestartSec=3
 # root-only: the URL may carry the card-reader token
