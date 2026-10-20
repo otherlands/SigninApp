@@ -65,7 +65,7 @@ What the script prints and what it must say:
 | `== 6 proof` | `active` + 5 journal lines, then **KIOSK INSTALLED … Address of this Pi: 192.168.101.x** | `activating`/`failed` → `journalctl -u signin-kiosk -n 30` and bring the text back |
 
 - [ ] After `sudo reboot`: **the screen shows the sign-in page full-screen, no desktop, no cursor blink, and stays on.** Write the Pi's address here: `192.168.101.____`
-- [ ] **Panel dark, HDMI monitor fine?** (seen 2026-10-20) SD card into a PC → arm `deploy/kiosk-pi/display-diag.sh` (see its header) → boot once with both screens → read `display-diag.txt` on the card.
+- [x] **Panel dark, HDMI monitor fine?** (seen 2026-10-20; **solved the same day**: after the one-shot below the panel shows the desktop. The panel's own blue "No Signal" box means it has power and only lacks video.) SD card into a PC → arm `deploy/kiosk-pi/display-diag.sh` (see its header) → boot once with both screens → read `display-diag.txt` on the card.
 - [ ] Orientation: the 10CS is native landscape 1280×800 — expect no rotation needed. If it comes up rotated, say so; the installer's hint is written for the DSI port and this board is **HDMI**, so the fix will differ (unverified).
 
 ## 4 · Prove the card path  (≈ 5 min — this is the first real end-to-end on the kiosk)
