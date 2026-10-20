@@ -53,7 +53,7 @@ consoles were not checked and may differ from what is written here. If something
 <tr><td>SharePoint / Microsoft List</td><td><span class="todo">not configured</span>: all <code>SP_*</code> values empty except the folder name (step 7).</td></tr>
 <tr><td>Device tokens</td><td><span class="todo">none issued</span>; devices use the shared <code>API_TOKEN</code> (step 3).</td></tr>
 <tr><td>Back-door reader (ESP32)</td><td>Running v3.6 firmware (flashed 26 Sep). v4.1 firmware compiled, <span class="todo">not flashed</span> (step 4).</td></tr>
-<tr><td>Front-door kiosk (Pi)</td><td>Parts ordered 26 Sep; <span class="todo">not built</span> (step 5).</td></tr>
+<tr><td>Front-door kiosk (Pi)</td><td><span class="ok">built, kiosk page live on the bench</span> since 20 Oct 16:53 at <code>192.168.101.54</code>, with its own device token <code>door-kiosk</code> (in the vault). Touch and the 10" panel proven. <span class="todo">Card-reader test and wall mounting still to do</span> (step 5).</td></tr>
 <tr><td>Presence (phone / key-tag)</td><td><span class="opt">off</span> (v4.1: off unless <code>PRESENCE=on</code>); no UniFi key, no tags, no anchor (step 8, optional).</td></tr>
 <tr><td>Monitoring on platform-a</td><td><span class="todo">deploy owed</span> — needs your sudo password on platform-a (step 9). Outside heartbeat <span class="todo">not chosen</span> (step 9b). Ops webhook <span class="todo">not created</span> (step 1b).</td></tr>
 <tr><td>Trusted networks</td><td><span class="todo">not set</span>: every LAN address, including the IoT Wi-Fi, still gets the full app on <code>:3000</code> (step 6g).</td></tr>
