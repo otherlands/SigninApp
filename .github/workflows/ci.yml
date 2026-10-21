@@ -77,6 +77,11 @@ jobs:
       - run: for f in deploy/*.sh deploy/kiosk-pi/*.sh; do bash -n "$f"; done
       # The Windows desktop reminder: parse with PowerShell (pwsh ships on ubuntu runners). It runs for real in
       # test/desktop.test.js on Windows.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: visitor label agent (selection rules + rendering; no printer)
+        run: pip install -q 'pillow>=10' && python -m unittest deploy/kiosk-pi/labels/test_label_agent.py -v
       - name: desktop reminder parses
         shell: pwsh
         run: |
