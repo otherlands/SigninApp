@@ -350,6 +350,7 @@ node bin/signinctl.js restore /opt/eright-signin/data/backups/&lt;file&gt;.sqlit
 <p>Before editing the env file, and after: <code>node server.js --check-config</code>. The server refuses to start on a bad value and says which.</p>
 
 <h3>Desktop reminder on office PCs (v4.1, optional)</h3>
+<p><b>Preferred since 21 Oct: Caller Pop 0.6.0</b>, already on every desk, has the same reminder built in (Settings → <i>Door sign-in reminder</i>; it updates itself from platform-a once published with <code>sudo bash ~/caller-pop-0.6.0/publish.sh</code> on platform-a). The script below is for a PC without Caller Pop.</p>
 <p>A small script for each person's Windows PC: at log on and when the PC is unlocked, if the PC is on the office network and the person is <b>not</b> signed in, it asks <b>"Sign in now?"</b> — <b>Yes</b> signs them in (the log shows <code>desktop</code> and the PC's name), <b>No</b> means "not in the office today" (no more reminders that day), <b>Cancel</b> asks again next time. It never signs anyone in without their Yes and never signs anyone out. No installation or admin rights; it uses the PowerShell built into Windows 10/11.</p>
 <ol>
 <li>On the person's PC, <b>while it is in the office on the office network</b>, copy <code>deploy\desktop\signin-check.ps1</code> from the repository (or a USB stick) anywhere, e.g. the Desktop.</li>

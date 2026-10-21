@@ -136,6 +136,10 @@ log-on + unlock triggers, `-Check` correctly reported "not signed in", then remo
 with real PowerShell 5.1 against a test server (Yes/No/off-network/already-in). The dialog box itself was not
 clicked in a test. Server side: `desktop` joined the no-token human sources (refused from untrusted networks like the
 others). A VPN that hands out an office address would look like "in the office": the person answers No.
+**Caller Pop 0.6.0 carries the same reminder** (2026-10-21, repo `D:\eRIGHT\eRIGHT Caller Pop`, commit `c637eca`): asks at start, unlock and resume when the register answers and the person is not signed in; "Not in the office today" marks that network away; virtual adapters ignored. Piloted on Alan's desk (Yes → signed in, source `desktop`). Published to the desks with `sudo bash ~/caller-pop-0.6.0/publish.sh` on platform-a (staged and checksummed; needs sudo).
+
+**Visitor labels** (2026-10-21, `deploy/kiosk-pi/labels/`): a Brother **QL-700** on the kiosk Pi's USB prints a stick-on label (VISITOR, eRIGHT Ltd, name, company, host, time in, vehicle, badge number) within a second of each visitor sign-in. `label_agent.py` follows `/api/stream` + `/api/state` (public kiosk view), prints each visitor once within 10 min of arrival, reads the loaded roll from the printer each time (62 mm endless found loaded: 90 mm labels). Installed on the kiosk 21 Oct (`brother-ql-next` 0.12.0, service `eright-labels`); a test label printed and the printer confirmed it; the stream→label path proven against a local server (label job 0.07 s after sign-in, each visitor once). Unit tests in CI.
+
 **Door reader firmware**: every HTTP call (taps, fire start, BLE batches, health check, heartbeat) runs in one FreeRTOS
 task on core 0; `loop()` only reads the button and the PN532 and drives the LED, so a dead server can no longer make
 the button or the reader unresponsive. Queued taps drain at full speed; orange means "not delivered yet" at once (no
