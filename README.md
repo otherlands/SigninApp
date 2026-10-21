@@ -66,6 +66,8 @@ Home: `https://github.com/otherlands/SigninApp` (remote `fork` in the developmen
 `tobygladman2/SigninApp` was disconnected from the development clone on 2026-10-19 and is no longer updated.
 Developed for eRIGHT Ltd, 8 staff, one door.
 
+**Door day (mounting the tablet at the main door and telling staff):** `docs/door-day-guide.html` / `.pdf` — the short version, with a Teams announcement, a staff handout and a door sign. The full list of go-live steps stays in `docs/go-live-guide.html`.
+
 ## v4.1 (2026-10-19/20)
 
 Built from the third full audit (findings C1–C12, an 18-step plan). Everything below is in commits `41f1dec`, `671136b`

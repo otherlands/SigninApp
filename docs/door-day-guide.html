@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>eRIGHT Sign-In — Door day: mount the tablet and go live</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm 18mm 15mm; }
+  html { font: 11.5pt/1.5 "Segoe UI", Arial, Helvetica, sans-serif; color: #111; }
+  body { max-width: 190mm; margin: 0 auto; padding: 0 8px; }
+  h1 { font-size: 24pt; margin: 0 0 4px; }
+  h2 { font-size: 16pt; margin: 22px 0 8px; padding-top: 8px; border-top: 3px solid #b00; }
+  h3 { font-size: 12.5pt; margin: 16px 0 6px; }
+  .page { page-break-before: always; }
+  ol.steps > li { margin: 0 0 12px; }
+  ol.steps > li > b:first-child { font-size: 12.5pt; }
+  .check li { list-style: none; margin: 5px 0; } .check li::before { content: "☐  "; font-size: 13pt; }
+  code, pre { font-family: Consolas, "Courier New", monospace; font-size: 10pt; }
+  code { background: #f1f1f1; padding: 0 3px; border-radius: 2px; }
+  pre { background: #f3f3f3; border: 1px solid #ddd; padding: 8px; white-space: pre-wrap; page-break-inside: avoid; }
+  .box { border: 1px solid #b00; background: #fff5f5; padding: 8px 12px; margin: 10px 0; page-break-inside: avoid; }
+  .good { border: 1px solid #070; background: #f3fff3; padding: 8px 12px; margin: 10px 0; page-break-inside: avoid; }
+  .note { border-left: 4px solid #777; background: #f6f6f6; padding: 6px 10px; margin: 10px 0; page-break-inside: avoid; }
+  .time { color: #555; font-weight: normal; font-size: 10.5pt; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 10.5pt; }
+  th, td { border: 1px solid #999; padding: 5px 7px; text-align: left; vertical-align: top; }
+  th { background: #eee; }
+  .muted { color: #555; }
+  /* the door sign */
+  .sign { text-align: center; padding-top: 10mm; }
+  .sign h1 { font-size: 40pt; margin-bottom: 6mm; }
+  .sign .big { font-size: 22pt; line-height: 1.35; margin: 7mm 0; }
+  .sign .row { border: 3px solid #222; border-radius: 14px; padding: 6mm; margin: 6mm 0; }
+  .sign .fire { border-color: #c00; color: #c00; }
+</style>
+</head>
+<body>
+
+<h1>Door day — mount the tablet and go live</h1>
+<p class="muted">eRIGHT Sign-In v4.1. Written 21 October 2026 for Alan. Everything below was checked against the live system on the morning of 21 October;
+nothing is assumed. Total time: about 1½ hours, most of it at the door.</p>
+
+<div class="good"><b>Already working (checked today):</b> the sign-in server is live (v4.1.0, every health check passing). The door tablet
+(Raspberry Pi 5 in the Argon 10" case) has been running for 20 hours showing the sign-in page, at network address <code>192.168.101.54</code>,
+with its touch screen and on-screen keyboard working. Yesterday staff names were tapped in and out on it and every tap reached the register.
+It comes back on its own after a restart, and if the server is unreachable when it starts it keeps retrying and shows the page by itself as soon
+as the server answers (tested on the tablet today: about 30 seconds after the server came back).</div>
+
+<h3>What staff will have by the end of today</h3>
+<table>
+<tr><th>At the door</th><td>Tap your name (or type it) — or tap your card — and you are in or out in a second, with an <b>Undo</b> if you tapped the wrong name.</td></tr>
+<tr><th>Visitors</th><td>Sign themselves in on the big screen with an on-screen keyboard, see the fire notice, and are given a badge number.</td></tr>
+<tr><th>Fire</th><td>One press of <b>FIRE ROLL CALL</b> freezes who is in the building; a card lands in the eRIGHT Teams channel within seconds; anyone can tick people SAFE on their phone; when everyone is ticked a green <b>ALL ACCOUNTED FOR</b> card follows.</td></tr>
+<tr><th>Their phone</th><td>A personal <b>"I'm SAFE"</b> button that marks only them safe (on the office Wi-Fi).</td></tr>
+<tr><th>Their PC <span class="muted">(optional)</span></th><td>A reminder at log-on if they forgot to sign in.</td></tr>
+</table>
+
+<h3>You will need</h3>
+<ul>
+<li>The tablet (as it is on your desk now), the <b>USB-203 card reader</b>, the cards and fobs you have, the case's fixings.</li>
+<li>A network socket by the main door that is on the <b>same office network as the tablet now</b> and gives <b>PoE+ power</b> (the case is powered through its Argon PoE+ HAT — there is no separate power supply), and a network cable long enough.</li>
+<li>This PC (it can reach the tablet and the server), the Admin PIN (<code>ssh root@192.168.101.102 grep ^ADMIN_PIN /etc/eright-signin.env</code> — never put it in a chat or e-mail).</li>
+</ul>
+
+<h2>Part 1 — At your desk <span class="time">(15 minutes)</span></h2>
+<ol class="steps">
+<li><b>Prove the card reader.</b> It has not been tried on the tablet yet. Plug the <b>USB-203</b> into a USB port on the tablet's port edge; its light comes on. (The words <i>Card reader: ready</i> at the bottom of the page are always shown — only a tap proves the reader works.)
+  <ul>
+  <li>Tap <b>your own card or fob</b> (you are one of the two staff with a card already): the page says <i>Alan Meade signed IN by card.</i> Tap it again: <i>signed OUT</i>.</li>
+  <li>Tap <b>a card nobody has yet</b>: the page says <i>Card … is not assigned to anyone</i>. That proves reader → tablet → server all work.</li>
+  </ul>
+  If the page says nothing at all when you tap: unplug and replug the reader, tap again. Still nothing — tell me "cards" and I will look at it from here. Staff can still tap their names meanwhile.</li>
+<li><b>Give out cards</b> (6 of the 8 staff have none yet: George Scoley, Kyle Wood, Sam Birch, Sarah De'Loyde, Scott Clewlow, Toby Gladman). For each card you have:
+  tap it on the tablet (it says <i>not assigned</i>) → on this PC open <code>http://192.168.101.102:3000/admin</code>, enter the PIN → on that person's row press <b>Give last tapped card</b> → confirm. Tap the card again: they are signed in by card. Tap again to sign them out.</li>
+<li><b>Visitor badges.</b> After signing in, the visitor screen says <i>"Welcome, &lt;name&gt;. Your badge is &lt;number&gt;"</i> and <i>"Please take the badge shown above."</i> Put numbered visitor badges or lanyards by the door, or tell me and I will change that sentence.</li>
+<li><b>Switch the tablet off cleanly</b> before unplugging it (pulling the cable from a running Pi can damage its SD card). On this PC, in PowerShell:
+<pre>ssh root@192.168.101.54 poweroff</pre>
+  Wait until the screen goes dark or shows its own blue <i>No Signal</i> box (the panel stays lit while it has power), give it another 10 seconds, then unplug the network cable.</li>
+</ol>
+
+<h2>Part 2 — At the main door <span class="time">(30–45 minutes)</span></h2>
+<ol class="steps">
+<li><b>Choose the spot.</b> Inside the door, where everyone passes on the way in and out; a height everyone can reach comfortably, including a wheelchair user; out of direct sun (glare); within reach of the network socket.</li>
+<li><b>Mount it</b> with the fixings from the case's box (VESA or panel mount). Argon's online guide does not give the VESA hole spacing, so measure the holes on the back of the case if you are using a bracket. Turn the case so the <b>port edge (network + USB) faces the wall or the cable run</b>, not the visitor.</li>
+<li><b>Fit the card reader</b> beside the screen, plugged into the tablet's USB, where people can tap it without reaching across the screen.</li>
+<li><b>Plug in the network cable.</b> The tablet starts by itself (the PoE+ HAT's light comes on). Within about 2 minutes the sign-in page appears full-screen.
+  <div class="note">If the screen stays black, the socket gives no PoE+ power: try another socket or a PoE injector. If the page shows <i>This site can't be reached</i>, the socket is on a different network from the office one: it will fix itself the moment it can reach the server, so move it to the right socket — nothing needs restarting. (The desktop once showed a warning that the supply "is not capable of 5 A": that is normal on PoE and the tablet measured a healthy 4.98 V with no under-voltage.)</div></li>
+</ol>
+
+<h3>Check it at the door <span class="time">(10 minutes)</span></h3>
+<ul class="check">
+<li>The green <b>● LIVE</b> dot is at the top right and the time is right.</li>
+<li>Tap your name → <i>Alan Meade signed IN at …</i> with an <b>Undo</b> button; tap it again → <i>signed OUT</i>.</li>
+<li>Type a few letters in <b>"Type your name to find it"</b> — the keyboard comes up and the names filter as you type.</li>
+<li>Tap your fob → signed IN by card; tap again → OUT.</li>
+<li><b>Visitor sign in</b> → type a test name with the on-screen keyboard (<b>Next ↵</b> moves to the next box) → choose who you are visiting → tick the fire notice → Sign in → a badge number appears → <b>Done</b>. Back on the main screen press <b>Sign out</b> next to the test visitor.</li>
+<li>Tell me "check the door" — I will confirm from here that every tap reached the register and the tablet is healthy.</li>
+</ul>
+<div class="box">Do <b>not</b> press FIRE ROLL CALL to "see what happens": it posts to the whole Teams channel. Part 4 does it properly, as an announced drill.</div>
+
+<h2>Part 3 — Tell the staff <span class="time">(10 minutes)</span></h2>
+<ol class="steps">
+<li><b>Post the announcement</b> (next page) in the eRIGHT Teams channel. Print the <b>staff handout</b> for anyone who prefers paper.</li>
+<li><b>Print the door sign</b> (last page) and put it beside the tablet.</li>
+<li><b>Give everyone their "I'm SAFE" link.</b> In Admin → Staff, press <b>I'm SAFE link</b> on a person's row: the link is copied. Paste it to that person in a <b>private</b> Teams chat (it marks only them safe; if a phone is lost, press the button again and the old link stops working). They open it once on their phone <b>on the office Wi-Fi</b>, then add it to the home screen. Do one person first and check it shows their name.</li>
+<li><b>Roll-call page on phones:</b> everyone opens <code>http://192.168.101.102:3000/fire</code> on the office Wi-Fi and adds it to their home screen. There is no fire marshal, so everyone has it.</li>
+</ol>
+<div class="note"><b>Honest limit today:</b> phones reach these pages only on the <b>office Wi-Fi</b>. From the car park on mobile data they cannot, until the public address and HTTPS are set up (go-live guide step 6). The Teams cards still reach every phone anywhere; the fire-warden headcount at the assembly point stays the control of record.</div>
+
+<h2>Part 4 — The drill that amazes them <span class="time">(5 minutes, at an announced time)</span></h2>
+<ol class="steps">
+<li>Say in Teams: <i>"2-minute fire DRILL at 3 pm — practice only, do not leave the building."</i></li>
+<li>At 3 pm, on your phone open the roll-call page → <b>Start a DRILL</b> → confirm. Within seconds a <b>FIRE DRILL — ROLL CALL STARTED</b> card appears in Teams listing who is in, and the door tablet shows the red banner.</li>
+<li>Ask people to press <b>I'm SAFE</b> (the Teams card's button, or their home-screen icon). Their names turn green on everyone's roll-call page — no refreshing.</li>
+<li>Tick anyone left on the roll-call page, with your name in the <b>Your name (marshal)</b> box. When the last one is ticked: green <b>ALL ACCOUNTED FOR</b> card in Teams.</li>
+<li>Press <b>END ROLL CALL</b>: a summary card says how long it took. Admin → Roll-call history keeps it for the fire log.</li>
+</ol>
+
+<h2>Part 5 — Optional today</h2>
+<ul>
+<li><b>PC reminder:</b> on a person's PC, in the office: <code>powershell -ExecutionPolicy Bypass -File signin-check.ps1 -Setup</code> (file: <code>deploy\desktop\signin-check.ps1</code> in the repository), pick their name. At log-on and unlock it asks "Sign in now?" if they are not. Go-live guide step 11 has the details.</li>
+<li><b>Save the tablet's own password</b> in the vault as <code>pi:door-kiosk</code> (padlock → Save a login…). Today it is only in your head.</li>
+</ul>
+
+<h2>After today (not needed to go live)</h2>
+<p>All of these are in the full go-live guide (<code>docs/go-live-guide.pdf</code>), each with its own steps:</p>
+<ul>
+<li>UniFi: fixed addresses (DHCP reservations) for the server <code>192.168.101.102</code> and the tablet <code>192.168.101.54</code>.</li>
+<li>Regenerate the Teams webhook (its address was once pasted in a chat) — step 1; ops alerts webhook — step 1b.</li>
+<li>Flash the back-door card reader with the new firmware — step 4.</li>
+<li>Public address + HTTPS so phones work off the Wi-Fi and the roll-call page works offline — step 6.</li>
+<li>SharePoint / Microsoft List copy (needs the Microsoft 365 admin) — step 7. Monitoring and outside heartbeat — step 9.</li>
+</ul>
+
+<!-- ============================================================ -->
+<div class="page"></div>
+<h2>Teams announcement <span class="time">(copy and paste)</span></h2>
+<pre>📣 New: signing in at the main door
+
+From today there is a touch screen inside the main door.
+
+➡️ Coming in or going out: tap your name (or type the first letters to find it) — or tap your card on the reader. Tapped the wrong name? Press Undo.
+➡️ Visitors: please point them to "Visitor sign in" on the screen. It takes them through it and gives them a badge number.
+🔥 Fire: anyone can press FIRE ROLL CALL. It instantly lists who is in the building, here in Teams and on everyone's phone, and we tick people safe at the assembly point.
+
+📱 Two things for your phone (on the office Wi-Fi):
+1. Open http://192.168.101.102:3000/fire and add it to your home screen — that is the roll-call page.
+2. I'll send you a private link for your own "I'm SAFE" button. Open it once and add it to your home screen too.
+
+We'll do a 2-minute practice drill at [time] — nobody needs to leave the building.
+
+Why: so that in a real fire we know within seconds who is still inside.</pre>
+
+<!-- ============================================================ -->
+<div class="page"></div>
+<h2>Staff handout — signing in at eRIGHT</h2>
+<h3>Every day</h3>
+<ol>
+<li><b>Coming in:</b> tap your name on the screen inside the main door, or tap your card on the reader beside it. The screen says <i>signed IN</i>.</li>
+<li><b>Going out:</b> the same again — the screen says <i>signed OUT</i>.</li>
+<li><b>Wrong name?</b> Press <b>Undo</b> on the message straight away.</li>
+<li><b>Can't see your name?</b> Type the first letters in <i>"Type your name to find it"</i>.</li>
+<li><b>Forgot to sign out yesterday?</b> Your name shows ⚠. Just tap it to sign out, or tell the office.</li>
+</ol>
+<h3>Visitors</h3>
+<p>Point them to <b>Visitor sign in</b>. They type their name and company, choose who they are visiting, read the fire notice and get a badge number. When they leave they press <b>Sign out</b> next to their name on the main screen.</p>
+<h3>Fire</h3>
+<ol>
+<li>Leave the building. Do not stop to sign out.</li>
+<li>Anyone can start the roll call: <b>FIRE ROLL CALL</b> on the door screen, or <b>START ROLL CALL</b> on the roll-call page on your phone.</li>
+<li>At the assembly point press <b>I'm SAFE</b> on your phone, or tell whoever is ticking names. Anyone can tick people SAFE on the roll-call page.</li>
+<li>Teams shows who is still not accounted for — those are the people to look for.</li>
+</ol>
+<h3>On your phone (office Wi-Fi)</h3>
+<ul>
+<li>Roll-call page: <code>http://192.168.101.102:3000/fire</code> — add it to your home screen.</li>
+<li>Your personal "I'm SAFE" link comes from Alan in a private Teams chat. Open it once, add it to your home screen. It can only ever mark <b>you</b> safe. Don't forward it.</li>
+</ul>
+<p class="muted">Off the office Wi-Fi (mobile data) these phone pages cannot reach the server yet; the Teams cards still arrive. The warden's headcount at the assembly point is still the official check.</p>
+
+<!-- ============================================================ -->
+<div class="page"></div>
+<div class="sign">
+<h1>Please sign in</h1>
+<div class="row big"><b>Staff</b><br>Tap your name on the screen<br>— or tap your card on the reader</div>
+<div class="row big"><b>Visitors</b><br>Tap <b>Visitor sign in</b><br>and follow the screen</div>
+<div class="row big"><b>Leaving?</b><br>Sign out the same way</div>
+<div class="row big fire"><b>FIRE</b><br>Leave the building — do not stop to sign out.<br>Anyone can press <b>FIRE ROLL CALL</b>.</div>
+<p class="muted" style="font-size:14pt">eRIGHT Ltd</p>
+</div>
+
+</body>
+</html>
