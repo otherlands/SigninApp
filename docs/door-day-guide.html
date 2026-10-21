@@ -48,7 +48,7 @@ as the server answers (tested on the tablet today: about 30 seconds after the se
 <h3>What staff will have by the end of today</h3>
 <table>
 <tr><th>At the door</th><td>Tap your name (or type it) — or tap your card — and you are in or out in a second, with an <b>Undo</b> if you tapped the wrong name.</td></tr>
-<tr><th>Visitors</th><td>Sign themselves in on the big screen with an on-screen keyboard, see the fire notice, and are given a badge number.</td></tr>
+<tr><th>Visitors</th><td>Sign themselves in on the big screen with an on-screen keyboard, see the fire notice, and a stick-on <b>VISITOR</b> label with their name, company, host and badge number prints by the door.</td></tr>
 <tr><th>Fire</th><td>One press of <b>FIRE ROLL CALL</b> freezes who is in the building; a card lands in the eRIGHT Teams channel within seconds; anyone can tick people SAFE on their phone; when everyone is ticked a green <b>ALL ACCOUNTED FOR</b> card follows.</td></tr>
 <tr><th>Their phone</th><td>A personal <b>"I'm SAFE"</b> button that marks only them safe (on the office Wi-Fi).</td></tr>
 <tr><th>Their PC <span class="muted">(optional)</span></th><td>A reminder at log-on if they forgot to sign in.</td></tr>
@@ -71,7 +71,7 @@ as the server answers (tested on the tablet today: about 30 seconds after the se
   If the page says nothing at all when you tap: unplug and replug the reader, tap again. Still nothing — tell me "cards" and I will look at it from here. Staff can still tap their names meanwhile.</li>
 <li><b>Give out cards</b> (6 of the 8 staff have none yet: George Scoley, Kyle Wood, Sam Birch, Sarah De'Loyde, Scott Clewlow, Toby Gladman). For each card you have:
   tap it on the tablet (it says <i>not assigned</i>) → on this PC open <code>http://192.168.101.102:3000/admin</code>, enter the PIN → on that person's row press <b>Give last tapped card</b> → confirm. Tap the card again: they are signed in by card. Tap again to sign them out.</li>
-<li><b>Visitor badges.</b> After signing in, the visitor screen says <i>"Welcome, &lt;name&gt;. Your badge is &lt;number&gt;"</i> and <i>"Please take the badge shown above."</i> Put numbered visitor badges or lanyards by the door, or tell me and I will change that sentence.</li>
+<li><b>Visitor labels.</b> The <b>Brother QL-700</b> plugs into the tablet's USB and prints a stick-on label for every visitor within a few seconds of them pressing Sign in: <b>VISITOR</b>, eRIGHT Ltd, their name, company, who they are visiting, time in, vehicle and badge number (set up and test-printed 21 Oct). Keep the printer's green <i>Editor Lite</i> light <b>off</b>. The visitor screen tells them to take their label. Reprint or check it from this PC: <code>ssh root@192.168.101.54 "sudo -u labels env $(grep -v ^# /etc/eright-labels.env | xargs) /opt/eright-labels/venv/bin/python /opt/eright-labels/label_agent.py reprint 7"</code> (7 = badge number), or just tell me.</li>
 <li><b>Switch the tablet off cleanly</b> before unplugging it (pulling the cable from a running Pi can damage its SD card). On this PC, in PowerShell:
 <pre>ssh root@192.168.101.54 poweroff</pre>
   Wait until the screen goes dark or shows its own blue <i>No Signal</i> box (the panel stays lit while it has power), give it another 10 seconds, then unplug the network cable.</li>
@@ -81,7 +81,7 @@ as the server answers (tested on the tablet today: about 30 seconds after the se
 <ol class="steps">
 <li><b>Choose the spot.</b> Inside the door, where everyone passes on the way in and out; a height everyone can reach comfortably, including a wheelchair user; out of direct sun (glare); within reach of the network socket.</li>
 <li><b>Mount it</b> with the fixings from the case's box (VESA or panel mount). Argon's online guide does not give the VESA hole spacing, so measure the holes on the back of the case if you are using a bracket. Turn the case so the <b>port edge (network + USB) faces the wall or the cable run</b>, not the visitor.</li>
-<li><b>Fit the card reader</b> beside the screen, plugged into the tablet's USB, where people can tap it without reaching across the screen.</li>
+<li><b>Fit the card reader</b> beside the screen, plugged into the tablet's USB, where people can tap it without reaching across the screen. <b>Put the QL-700 label printer</b> where a visitor can take the label, plugged into the tablet's other USB port and into mains power.</li>
 <li><b>Plug in the network cable.</b> The tablet starts by itself (the PoE+ HAT's light comes on). Within about 2 minutes the sign-in page appears full-screen.
   <div class="note">If the screen stays black, the socket gives no PoE+ power: try another socket or a PoE injector. If the page shows <i>This site can't be reached</i>, the socket is on a different network from the office one: it will fix itself the moment it can reach the server, so move it to the right socket — nothing needs restarting. (The desktop once showed a warning that the supply "is not capable of 5 A": that is normal on PoE and the tablet measured a healthy 4.98 V with no under-voltage.)</div></li>
 </ol>
