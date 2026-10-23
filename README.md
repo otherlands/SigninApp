@@ -2,7 +2,7 @@
 
 Small LAN system for a single door: 8 staff, visitors, and — because eRIGHT has **no designated
 fire marshal** — a register that anyone at the assembly point can open on a phone and that is
-copied off-site automatically after every change. Node 22.13+ only; no npm dependencies, no build
+copied off-site automatically after every change. Node 22.23.4+ only (the 21 Oct 2026 security build; earlier 22.x is unpatched); no npm dependencies, no build
 step. Data is SQLite (Node's built-in `node:sqlite`).
 
 Built 2026-09-25 from the original SigninApp (`tobygladman2/SigninApp` commit `6eab63a`, shared-server
@@ -242,7 +242,7 @@ redesign. Each fix has a regression test named after its finding in `test/harden
   outbox age, backup age, SharePoint, Teams, Wi-Fi) and `jobs`; `/metrics` adds `signin_check_ok{check}`,
   `signin_job_failures{job}`, `signin_job_last_run_age_seconds{job}`, `signin_backup_*`. `ok` still just means "answering".
 - **Structured logs**: `LOG_FORMAT=json` for one JSON object per line.
-- **CI** (`.github/workflows/ci.yml`): tests on Node 22.13 and 24, config check, firmware build from
+- **CI** (`.github/workflows/ci.yml`): tests on Node 22 (latest) and 24, config check, firmware build from
   `config.example.h`, Python and shell syntax.
 
 **Roll-call access is unchanged by design**: anyone on the LAN may start a roll call, tick SAFE/MISSING and end it,
@@ -285,7 +285,7 @@ because there is no designated marshal. Every action records its device.
 
 On a Proxmox/Ubuntu VM, follow **"Install on Ubuntu, step by step"** below — it covers all of this in order. The short form:
 
-1. Install Node 22.13 or newer (`node --version`). Developed and tested on 24.13.1.
+1. Install Node 22.23.4 or newer (`node --version`) — the 21 Oct 2026 security build; see `deploy/patch-node-ct106.sh`. Developed and tested on 24.13.1.
 2. `npm test`: every test must pass.
 3. Set `ADMIN_PIN` and `API_TOKEN` before exposing the server to the office LAN (see `deploy/`). Give the server a fixed IP or hostname. `node server.js --check-config` lists anything wrong.
 4. `npm start`, open `/admin`, set the company name and fire notice, add the staff.

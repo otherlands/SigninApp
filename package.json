@@ -5,7 +5,7 @@
   "description": "LAN staff and visitor sign-in with fire roll call, event-sourced attendance, off-site copies and a read-only register assistant. Node only, no npm dependencies.",
   "main": "server.js",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.23.4"
   },
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning server.js",

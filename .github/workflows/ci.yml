@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node: ['22.13', '24']
+        node: ['22', '24']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22.13'
+          node-version: '22'
       # ubuntu-latest ships Google Chrome; the harness drives it over the DevTools protocol (no npm packages).
       - run: npm run e2e
         env:
