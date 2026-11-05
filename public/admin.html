@@ -8,155 +8,253 @@
     <meta name="theme-color" content="#0a0d1a">
     <link rel="icon" href="/favicon.svg">
     <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/admin.css">
 </head>
 
-<body>
-    <header class="top">
-        <div class="brand">
+<!-- Admin v5 (2026-11-05): one dashboard, six tabs (Today · Staff · Visitors · Log · Ask · System). Every function of
+     the earlier single-scroll page is here; the look matches the eRIGHT staff hub. Plain HTML + admin.js, no build. -->
+
+<body class="adm locked">
+    <header class="adm-top">
+        <div class="adm-brand">
             <div class="logo"></div>
             <div>
-                <h1 id="company">Admin</h1>
-                <div class="clock" id="clock"></div>
+                <div class="adm-title"><span id="company">eRIGHT</span><span class="adm-tag">Admin</span></div>
+                <div class="adm-clock" id="clock"></div>
             </div>
         </div>
-        <div class="row">
-            <div class="count-pill"><span>On site</span><b id="inCount">–</b></div>
-            <a href="/"><button class="ghost">Kiosk</button></a>
-            <a href="/fire"><button class="danger">Fire page</button></a>
-            <button id="logout" class="ghost small">Log out</button>
+        <nav class="adm-tabs" id="tabs" aria-label="Sections">
+            <a href="#today" data-tab="today">Today</a>
+            <a href="#staff" data-tab="staff">Staff <b id="tabStaff"></b></a>
+            <a href="#visitors" data-tab="visitors">Visitors <b id="tabVisitors"></b></a>
+            <a href="#log" data-tab="log">Log &amp; roll calls</a>
+            <a href="#ask" data-tab="ask">Ask</a>
+            <a href="#system" data-tab="system">System <b id="tabSystem"></b></a>
+        </nav>
+        <div class="adm-actions">
+            <span class="adm-live" id="live" title="Updates the moment the register changes"><i></i>live</span>
+            <a class="adm-pill" href="/" title="The door screen">On site <b id="inCount">–</b></a>
+            <a class="adm-btn" href="/" title="Open the door screen">Kiosk</a>
+            <a class="adm-btn fire" href="/fire" title="The roll-call page">🚨 Fire page</a>
+            <button id="logout" class="adm-btn ghost" title="End this admin session">Log out</button>
         </div>
     </header>
 
-    <section class="panel hidden" id="pinPanel">
-        <h2>Admin PIN</h2>
-        <form id="pinForm" class="row"><input id="pin" type="password" class="grow" placeholder="Enter the admin PIN"
-                autocomplete="off"><button class="primary">Unlock</button></form>
-    </section>
-
-    <div class="admin-grid">
-        <section class="panel">
-            <h2>Staff</h2>
-            <form id="personForm" class="row"><input id="personName" class="grow" placeholder="New staff name"
-                    maxlength="80" required><button class="primary">Add</button></form>
-            <p class="muted" style="margin-top:8px">Card UID: present the card to a reader on this PC with the cursor in
-                the box, or type it. Last unknown card seen: <b id="lastCard">none</b> <button id="useLastCard"
-                    class="small hidden">copy</button></p>
-            <div id="peopleList"></div>
-        </section>
-
-        <section class="panel">
-            <h2>Forgotten sign-outs</h2>
-            <p class="muted">Staff and visitors still signed in from a previous day. They stay on the fire register until you close
-                them here — nothing is closed automatically.</p>
-            <div id="staleList"></div>
-            <button id="closeStale" class="hidden" style="margin-top:10px">Close all forgotten sign-outs</button>
-
-            <h2 style="margin-top:24px">Visitors on site</h2>
-            <div id="visitorList"></div>
-
-            <h2 style="margin-top:24px">Expected visitors <span class="chip" id="expectedCount">0</span></h2>
-            <p class="muted">Pre-register a visitor and they sign in with one tap on the door tablet — name, company and
-                host already filled in. Shows the next 14 days.</p>
-            <form id="expectedForm" class="form-grid" autocomplete="off">
-                <label>Name<input id="exName" required maxlength="80" placeholder="Visitor name"></label>
-                <label>Company<input id="exCompany" maxlength="80"></label>
-                <label>Visiting<select id="exHost">
-                        <option value="">—</option>
-                    </select></label>
-                <label>Day<input id="exDay" type="date" required></label>
-                <label>Vehicle<input id="exVehicle" maxlength="16" style="text-transform:uppercase"></label>
-                <label>Note<input id="exNote" maxlength="200" placeholder="e.g. server room, needs parking"></label>
-                <button class="primary" type="submit">Add</button>
-            </form>
-            <div id="expectedList" style="margin-top:10px"></div>
-
-            <h2 style="margin-top:24px">Settings</h2>
-            <form id="companyForm"><label>Company name<input id="companyName" maxlength="80"></label><button
-                    class="small">Save name</button></form>
-            <form id="noticeForm" style="margin-top:12px"><label>Fire notice shown to visitors<textarea id="fireNotice"
-                        rows="3" maxlength="400"></textarea></label><button class="small">Save notice</button></form>
-            <div class="row" style="margin-top:12px">
-                <button id="setCardToken" class="small ghost">Set card-reader token on this device</button>
-                <span class="muted" id="cardTokenState"></span>
+    <main class="adm-main">
+        <!-- PIN gate -->
+        <section class="adm-gate hidden" id="pinPanel">
+            <div class="gate-card">
+                <div class="gate-lock">🔐</div>
+                <h1>Admin</h1>
+                <p class="muted">Enter the admin PIN. You stay signed in on this browser for 12 hours.</p>
+                <form id="pinForm"><input id="pin" type="password" inputmode="numeric" placeholder="PIN" autocomplete="off"
+                        aria-label="Admin PIN"><button class="primary">Unlock</button></form>
             </div>
-            <h2 style="margin-top:24px">Off-site copies</h2>
-            <p class="muted" id="offsiteState">…</p>
-
-            <h2 style="margin-top:24px">Devices &amp; tokens</h2>
-            <p class="muted">Give each card reader, scanner and wall button its own token with only what it needs. A
-                device's token also fixes its name in the log, and one lost device can be revoked without re-keying the rest.
-                The shared API_TOKEN keeps working until you remove it from the server.</p>
-            <form id="deviceForm" class="form-grid" autocomplete="off">
-                <label>Name<input id="devName" required maxlength="40" placeholder="back-door-reader"></label>
-                <label>Kind<select id="devRole">
-                        <option value="reader">card reader / door unit</option>
-                        <option value="scanner">tag scanner</option>
-                        <option value="button">wall button</option>
-                        <option value="kiosk">kiosk card reader</option>
-                    </select></label>
-                <label class="row" style="color:var(--text)"><input type="checkbox" name="scope" value="sign" checked
-                        style="width:22px;min-height:22px;flex:0 0 22px"> card taps</label>
-                <label class="row" style="color:var(--text)"><input type="checkbox" name="scope" value="presence"
-                        style="width:22px;min-height:22px;flex:0 0 22px"> tag sightings</label>
-                <label class="row" style="color:var(--text)"><input type="checkbox" name="scope" value="fire"
-                        style="width:22px;min-height:22px;flex:0 0 22px"> start roll call</label>
-                <button class="primary" type="submit">Issue token</button>
-            </form>
-            <p class="notice hidden" id="newToken" style="text-align:left"></p>
-            <div id="deviceList" style="margin-top:10px"></div>
-
-            <h2 style="margin-top:24px">Presence — phones &amp; key tags</h2>
-            <p class="muted">Belt and braces: a phone on the office Wi-Fi and a BLE tag on the keys. Either one seen
-                inside signs a
-                person <b>in</b> automatically. Nothing is ever signed <b>out</b> by inference unless the sign-in was
-                itself
-                inferred <i>and</i> both have gone <i>and</i> the tag walked out past a door; otherwise the register
-                just
-                shows 📵 <i>probably left</i>. A card or kiosk tap always wins.</p>
-            <p class="muted" id="presenceHealth">…</p>
-            <h3 class="muted" style="font-size:.85rem;margin-top:10px">Phones on the office Wi-Fi not yet assigned</h3>
-            <div id="phonePicker"></div>
-            <h3 class="muted" style="font-size:.85rem;margin-top:10px">Key tags heard by a scanner not yet assigned</h3>
-            <div id="tagPicker"></div>
-            <p class="muted" style="font-size:.85rem">To un-assign, set the field to CLEAR via the API for now (or ask
-                Alan). iPhones: set the office Wi-Fi's Private Address to
-                <b>Fixed</b>, not Rotating, or the phone will look like a new device every day.
-            </p>
         </section>
 
-        <section class="panel" style="grid-column:1/-1">
-            <div class="row" style="justify-content:space-between">
-                <h2>Ask the register</h2>
-                <span class="muted" id="askState"></span>
-            </div>
-            <p class="muted">Plain-English questions answered by a model on the estate's own server, from the register only
-                (it can look up who is in, who was in at a time, a person's history, roll calls and daily counts; it cannot
-                change anything and nothing leaves the LAN). Every question is logged.</p>
-            <form id="askForm" class="row"><input id="askQ" class="grow" maxlength="500"
-                    placeholder="e.g. Who was on site last Tuesday at 2pm? · How many visitors in October? · When did Toby last sign in?"><button
-                    class="primary">Ask</button></form>
-            <div id="askA" class="muted" style="margin-top:10px;white-space:pre-wrap"></div>
-            <h3 class="muted" style="font-size:.85rem;margin-top:14px">Who was in at…</h3>
-            <form id="atForm" class="row"><input id="atWhen" type="datetime-local" style="min-height:44px;padding:8px;width:auto"><button
-                    class="small">Look up</button></form>
-            <div id="atList" style="margin-top:8px"></div>
-        </section>
-
-        <section class="panel" style="grid-column:1/-1">
-            <div class="row" style="justify-content:space-between">
-                <h2>Log</h2>
-                <div class="row">
-                    <input type="date" id="from" style="min-height:44px;padding:8px;width:auto">
-                    <input type="date" id="to" style="min-height:44px;padding:8px;width:auto">
-                    <button id="exportCsv" class="small">Download CSV</button>
-                    <button id="rollcallHistory" class="small ghost">Roll-call history</button>
+        <div id="app" class="hidden">
+            <!-- ===================================================== TODAY -->
+            <section class="tab" data-tab="today">
+                <div class="fire-banner hidden" id="fireBanner"></div>
+                <div class="kpis">
+                    <div class="kpi hero">
+                        <div class="ring">
+                            <svg viewBox="0 0 120 120" aria-hidden="true">
+                                <defs><linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+                                        <stop offset="0" stop-color="#2ecc71" /><stop offset="1" stop-color="#00d4ff" />
+                                    </linearGradient></defs>
+                                <circle class="trk" cx="60" cy="60" r="52" />
+                                <circle class="val" id="ringArc" cx="60" cy="60" r="52" stroke-dasharray="326.7" stroke-dashoffset="326.7" />
+                            </svg>
+                            <div class="mid"><b id="kpiOnSite">0</b><span>on site</span></div>
+                        </div>
+                        <div>
+                            <div class="kpi-label">In the building now</div>
+                            <div class="kpi-big" id="kpiHeadline">—</div>
+                            <div class="kpi-sub" id="kpiSub"></div>
+                        </div>
+                    </div>
+                    <a class="kpi" href="#staff">
+                        <div class="kpi-label">Staff in</div>
+                        <div class="kpi-num"><b id="kpiStaffIn">0</b><span>/ <span id="kpiStaffAll">0</span></span></div>
+                        <div class="stack" id="kpiStack"></div>
+                    </a>
+                    <a class="kpi" href="#visitors">
+                        <div class="kpi-label">Visitors</div>
+                        <div class="kpi-num"><b id="kpiVisitors">0</b><span>on site</span></div>
+                        <div class="kpi-sub" id="kpiExpected"></div>
+                    </a>
+                    <a class="kpi" href="#system" id="kpiHealthCard">
+                        <div class="kpi-label">System</div>
+                        <div class="kpi-num health"><b id="kpiHealth">…</b></div>
+                        <div class="kpi-sub" id="kpiHealthSub"></div>
+                    </a>
                 </div>
-            </div>
-            <div id="events"></div>
-        </section>
-    </div>
 
-    <p id="notice" class="notice"></p>
+                <div class="card attention hidden" id="attention">
+                    <div class="card-h"><h2>Needs attention</h2></div>
+                    <div id="attentionList"></div>
+                </div>
+
+                <div class="cols">
+                    <div class="card">
+                        <div class="card-h"><h2>Who's in</h2><span class="muted" id="whoSub"></span></div>
+                        <div class="who-grid" id="whoGrid"></div>
+                        <div class="who-out" id="whoOut"></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-h"><h2>Live activity</h2><a href="#log" class="link">Full log →</a></div>
+                        <div class="feed" id="feed"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ===================================================== STAFF -->
+            <section class="tab" data-tab="staff">
+                <div class="toolbar">
+                    <input id="staffSearch" class="search" type="search" placeholder="Find a person…" autocomplete="off">
+                    <form id="personForm" class="inline-form"><input id="personName" placeholder="New staff name" maxlength="80"
+                            required><button class="primary">Add staff</button></form>
+                </div>
+                <div class="hint-bar hidden" id="cardHint">
+                    <span>💳 Last unknown card tapped: <b id="lastCard">none</b></span>
+                    <span class="muted">Press <b>Give card</b> on the right person below.</span>
+                    <button id="useLastCard" class="adm-btn ghost">Copy number</button>
+                </div>
+                <p class="muted tip">To assign a card by hand: click the person's card box and tap the card on a USB reader on
+                    this PC (or type the number), then Enter. Type <code>CLEAR</code> to remove a card.</p>
+                <div class="staff-grid" id="peopleList"></div>
+            </section>
+
+            <!-- ===================================================== VISITORS -->
+            <section class="tab" data-tab="visitors">
+                <div class="cols">
+                    <div class="card">
+                        <div class="card-h"><h2>Visitors on site</h2><span class="muted" id="visitorSub"></span></div>
+                        <div id="visitorList"></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-h"><h2>Forgotten sign-outs</h2><button id="closeStale" class="adm-btn hidden">Close all</button></div>
+                        <p class="muted small">Still signed in from a previous day. They stay on the fire register until closed
+                            here — nothing is closed automatically.</p>
+                        <div id="staleList"></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-h"><h2>Expected visitors <span class="count" id="expectedCount">0</span></h2>
+                        <span class="muted small">Next 14 days · they sign in with one tap on the door screen</span></div>
+                    <form id="expectedForm" class="form-row" autocomplete="off">
+                        <label>Name<input id="exName" required maxlength="80" placeholder="Visitor name"></label>
+                        <label>Company<input id="exCompany" maxlength="80"></label>
+                        <label>Visiting<select id="exHost"><option value="">—</option></select></label>
+                        <label>Day<input id="exDay" type="date" required></label>
+                        <label>Vehicle<input id="exVehicle" maxlength="16" style="text-transform:uppercase"></label>
+                        <label class="wide">Note<input id="exNote" maxlength="200" placeholder="e.g. server room, needs parking"></label>
+                        <button class="primary" type="submit">Add</button>
+                    </form>
+                    <div id="expectedList" class="expected-list"></div>
+                </div>
+            </section>
+
+            <!-- ===================================================== LOG -->
+            <section class="tab" data-tab="log">
+                <div class="toolbar">
+                    <div class="seg" id="logSeg"><button data-view="events" class="on">Event log</button><button data-view="rollcalls"
+                            id="rollcallHistory">Roll calls &amp; drills</button></div>
+                    <input id="logSearch" class="search" type="search" placeholder="Filter by name, device, note…" autocomplete="off">
+                    <div class="chips" id="logKinds">
+                        <button data-k="" class="on">All</button><button data-k="inout">In / out</button><button
+                            data-k="fire">Roll call</button><button data-k="card">Cards</button><button data-k="admin">Admin</button>
+                    </div>
+                    <span class="spacer"></span>
+                    <label class="mini">From<input type="date" id="from"></label>
+                    <label class="mini">To<input type="date" id="to"></label>
+                    <button id="exportCsv" class="adm-btn">⬇ CSV</button>
+                </div>
+                <div class="card"><div class="log" id="events"></div><div id="rollcalls" class="hidden"></div></div>
+            </section>
+
+            <!-- ===================================================== ASK -->
+            <section class="tab" data-tab="ask">
+                <div class="cols">
+                    <div class="card ask">
+                        <div class="card-h"><h2>Ask the register</h2><span class="muted small" id="askState"></span></div>
+                        <p class="muted small">Plain-English questions, answered by a model on the estate's own server from the
+                            register only. It can look up who is in, who was in at a time, a person's history, roll calls and daily
+                            counts; it cannot change anything, nothing leaves the LAN, and every question is logged.</p>
+                        <form id="askForm" class="ask-form"><input id="askQ" maxlength="500"
+                                placeholder="Ask anything about who was in…"><button class="primary">Ask</button></form>
+                        <div class="chips suggest" id="askSuggest">
+                            <button>Who is on site right now?</button><button>Who was in yesterday at 3pm?</button><button>How many
+                                visitors this month?</button><button>When did each person arrive today?</button><button>How did the
+                                last drill go?</button>
+                        </div>
+                        <div id="askA" class="answer hidden"></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-h"><h2>Who was in at…</h2></div>
+                        <form id="atForm" class="inline-form"><input id="atWhen" type="datetime-local"><button class="adm-btn">Look up</button></form>
+                        <div id="atList" class="at-list"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ===================================================== SYSTEM -->
+            <section class="tab" data-tab="system">
+                <div class="card">
+                    <div class="card-h"><h2>Health</h2><span class="muted small" id="healthMeta"></span></div>
+                    <div class="health-verdict" id="healthVerdict"></div>
+                    <div class="tiles" id="offsiteState"></div>
+                </div>
+                <div class="cols">
+                    <div class="card">
+                        <div class="card-h"><h2>Settings</h2></div>
+                        <form id="companyForm" class="inline-form"><label class="grow">Company name<input id="companyName" maxlength="80"></label><button class="adm-btn">Save</button></form>
+                        <form id="noticeForm"><label>Fire notice shown to visitors<textarea id="fireNotice" rows="3" maxlength="400"></textarea></label><button class="adm-btn">Save notice</button></form>
+                        <div class="row" style="margin-top:14px">
+                            <button id="setCardToken" class="adm-btn ghost">Card-reader token on this device…</button>
+                            <span class="muted small" id="cardTokenState"></span>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-h"><h2>Devices &amp; tokens</h2></div>
+                        <p class="muted small">Each card reader, scanner and wall button gets its own token with only what it
+                            needs; the token fixes its name in the log and one lost device can be revoked alone.</p>
+                        <form id="deviceForm" class="form-row" autocomplete="off">
+                            <label>Name<input id="devName" required maxlength="40" placeholder="back-door-reader"></label>
+                            <label>Kind<select id="devRole">
+                                    <option value="reader">card reader / door unit</option>
+                                    <option value="scanner">tag scanner</option>
+                                    <option value="button">wall button</option>
+                                    <option value="kiosk">kiosk card reader</option>
+                                </select></label>
+                            <div class="checks wide">
+                                <label><input type="checkbox" name="scope" value="sign" checked> card taps</label>
+                                <label><input type="checkbox" name="scope" value="presence"> tag sightings</label>
+                                <label><input type="checkbox" name="scope" value="fire"> start roll call</label>
+                            </div>
+                            <button class="primary" type="submit">Issue token</button>
+                        </form>
+                        <div class="new-token hidden" id="newToken"></div>
+                        <div id="deviceList"></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-h"><h2>Presence — phones &amp; key tags</h2></div>
+                    <p class="muted small">A phone on the office Wi-Fi or a BLE tag seen inside signs a person <b>in</b>; nothing
+                        is signed <b>out</b> by inference unless the sign-in was itself inferred and both have gone past a door.
+                        A card or door-screen tap always wins. iPhones: set the office Wi-Fi's Private Address to <b>Fixed</b>.</p>
+                    <div class="tiles" id="presenceHealth"></div>
+                    <div class="cols">
+                        <div><h3>Phones on the office Wi-Fi not yet assigned</h3><div id="phonePicker"></div></div>
+                        <div><h3>Key tags heard but not yet assigned</h3><div id="tagPicker"></div></div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <div id="notice" class="toast" role="status" aria-live="polite"></div>
     <script src="/shared.js"></script>
     <script src="/admin.js"></script>
 </body>

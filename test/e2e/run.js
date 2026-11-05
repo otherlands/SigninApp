@@ -136,6 +136,42 @@ async function main() {
             if (visible.length !== 1 || visible[0] !== 'cara third') throw new Error(`visible after typing: ${JSON.stringify(visible)}`);
             page.close();
         });
+        await step('admin: PIN gate, live count, give an unknown card from "Needs attention", tabs, staff search, log, system tiles', async () => {
+            app.store.setState('lastUnknownCard', { uid: 'E2E0CA4D', at: new Date().toISOString(), device: 'e2e-reader' });
+            const page = await cdpPage(cdpPort, `${base}/admin`);
+            await page.until(`!document.querySelector('#pinPanel').classList.contains('hidden') && document.querySelector('#app').classList.contains('hidden')`, 'PIN gate shown, dashboard hidden');
+            const submitPin = (pin) => page.evaluate(`(() => { document.querySelector('#pin').value = ${JSON.stringify(pin)}; document.querySelector('#pinForm').requestSubmit(); })()`);
+            await submitPin('000000');
+            await page.until(`/Wrong PIN/.test(document.querySelector('#notice').textContent)`, 'wrong PIN refused');
+            if (!(await page.evaluate(`document.querySelector('#app').classList.contains('hidden')`))) throw new Error('dashboard opened on a wrong PIN');
+            await submitPin(PIN);
+            await page.until(`document.querySelector('#pinPanel').classList.contains('hidden') && !document.querySelector('#app').classList.contains('hidden')`, 'dashboard after the right PIN');
+            const st = await api('GET', '/api/state');
+            await page.until(`document.querySelector('#kpiOnSite').textContent === '${st.inCount}'`, `Today shows ${st.inCount} on site`);
+            await page.until(`document.querySelectorAll('#whoGrid .who').length >= ${st.inCount}`, 'who-is-in cards');
+            // give the unknown card to Cara from the attention row
+            await page.until(`document.querySelector('#attCardWho') !== null`, 'unknown card in Needs attention');
+            const cara = st.people.find(p => p.name === 'Cara Third');
+            await page.evaluate(`(() => { window.confirm = () => true; document.querySelector('#attCardWho').value = ${JSON.stringify(cara.id)}; document.querySelector('[data-att=giveCard]').click(); })()`);
+            const end = Date.now() + 10_000;
+            while (Date.now() < end && !app.store.getPersonByCard('E2E0CA4D')) await sleep(150);
+            if (app.store.getPersonByCard('E2E0CA4D')?.id !== cara.id) throw new Error('card not given to Cara');
+            if (app.store.getState('lastUnknownCard')) throw new Error('unknown card not cleared');
+            await page.until(`document.querySelector('#attCardWho') === null`, 'attention row gone');
+            // tabs + staff search
+            await page.evaluate(`document.querySelector('#tabs a[data-tab=staff]').click()`);
+            await page.until(`document.querySelector('section.tab[data-tab=staff]').classList.contains('on') && location.hash === '#staff'`, 'staff tab');
+            await page.until(`document.querySelectorAll('#peopleList .pcard').length === 3`, 'three staff cards');
+            await page.evaluate(`(() => { const s = document.querySelector('#staffSearch'); s.value = 'bob'; s.dispatchEvent(new Event('input')); })()`);
+            const shown = await page.evaluate(`[...document.querySelectorAll('#peopleList .pcard:not(.hidden)')].map(c => c.dataset.name)`);
+            if (shown.length !== 1 || shown[0] !== 'bob sample') throw new Error(`staff search shows ${JSON.stringify(shown)}`);
+            if (!(await page.evaluate(`[...document.querySelectorAll('#peopleList .pcard')].find(c => c.dataset.name === 'cara third').textContent.includes('💳 card')`))) throw new Error("Cara's card not shown on her staff card");
+            await page.evaluate(`location.hash = 'log'`);
+            await page.until(`[...document.querySelectorAll('#events .ev')].some(e => e.textContent.includes('Ann Example') && e.textContent.includes('signed in'))`, 'log shows Ann signed in');
+            await page.evaluate(`location.hash = 'system'`);
+            await page.until(`document.querySelectorAll('#offsiteState .tile').length >= 6 && document.querySelector('#healthVerdict').textContent.trim().length > 0`, 'system health tiles');
+            page.close();
+        });
         const rc = (await api('POST', '/api/fire/start', { source: 'fire-page', by: 'e2e' })).rollcall;
 
         await step('fire page: a marshal SAFE tick reaches the register', async () => {
