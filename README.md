@@ -323,7 +323,7 @@ Environment variables (all optional):
 | --- | --- |
 | `PORT`, `HOST` | default 3000 on all interfaces |
 | `DATA_FILE` | the register, default `data/signin.sqlite` |
-| `ADMIN_PIN` | required in `X-Admin-Pin` header for /admin write routes, export, events. Kiosk and fire page never need it. 10 wrong PINs from one address in 15 min lock that address out (429) for 15 min. |
+| `ADMIN_PIN` | required in `X-Admin-Pin` header for /admin write routes, export, events. Kiosk and fire page never need it. 10 wrong PINs from one address in 15 min lock that address out (429) for 15 min. Live CT 106 value: The Vault, item `signin:admin-pin` (collection `platform`), never in docs or git. |
 | `API_TOKEN` | required in `X-Api-Token` for **every card UID** and for any source other than the human ones (`kiosk`, `tap`, `fire-page`, `visitor`; `admin` needs the PIN instead): `card`, `esp32`, `api`, `alarm`, `webhook`, scanners. |
 | `MIRROR_URL`, `MIRROR_TOKEN` | main server pushes a roster snapshot to the mirror after every change (queued in SQLite, retried every 15 s). |
 | `REPLICA=1` | this instance is the read-only mirror. Serves `/fire` from the last snapshot and can run its own roll call. Refuses sign-ins. Needs `MIRROR_TOKEN` (refuses to start without it). |
