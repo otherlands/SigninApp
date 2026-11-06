@@ -1,16 +1,27 @@
-const { $, esc, sinceLabel, api, startClock, notice, listenForCardWedge } = SI;
+const { $, esc, sinceLabel, api, notice, listenForCardWedge } = SI;
 const peopleEl = $('#people'); const visitorsEl = $('#visitors'); const noticeEl = $('#notice');
 let state = null; let busy = false;
 
-startClock($('#clock'));
+const hue = (name) => { let h = 0; for (const c of String(name)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+const initials = (name) => { const p = String(name).trim().split(/\s+/); return ((p[0] || '')[0] || '').toUpperCase() + (p.length > 1 ? (p[p.length - 1][0] || '').toUpperCase() : ''); };
+const firstName = (name) => String(name).trim().split(/\s+/)[0];
+function tickClock() {
+    const d = new Date();
+    $('#time').textContent = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    $('#clock').textContent = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+tickClock(); setInterval(tickClock, 1000);
 
 function render(data) {
     state = data;
     document.title = `Sign in · ${data.companyName}`;
     $('#company').textContent = data.companyName;
     $('#inCount').textContent = data.inCount;
+    const staffIn = data.people.filter(p => p.signedIn).length;
+    $('#ringArc').style.strokeDashoffset = String(2 * Math.PI * 34 * (1 - (data.people.length ? staffIn / data.people.length : 0)));
     $('#countPill').classList.toggle('warn', data.staleCount > 0);
     $('#rollcallBanner').classList.toggle('hidden', !data.rollcall);
+    document.body.classList.toggle('rc', Boolean(data.rollcall));
     $('#loneBanner').classList.toggle('hidden', !data.loneWorker || Boolean(data.rollcall));
     $('#expectedBanner').classList.toggle('hidden', !data.expectedToday);
     if (data.expectedToday) $('#expectedText').textContent = `${data.expectedToday} visitor${data.expectedToday === 1 ? '' : 's'} expected today`;
@@ -20,24 +31,26 @@ function render(data) {
         const b = document.createElement('button');
         b.className = `person ${person.signedIn ? 'in' : ''} ${person.stale ? 'stale' : ''}`;
         const sub = person.signedIn
-            ? (person.stale ? `⚠ Signed in ${sinceLabel(person.since)} — tap to sign out` : `In ${sinceLabel(person.since)} — tap to sign out`)
+            ? (person.stale ? `⚠ In ${sinceLabel(person.since)} — tap to sign out` : `In ${sinceLabel(person.since)}`)
             : 'Tap to sign in';
         const pres = person.signedIn && person.presence ? (person.presence.state === 'here' ? '<span class="badge" title="phone or key tag seen inside">📱</span>' : person.presence.state === 'probably-left' ? `<span class="badge" title="phone and key tag absent">📵 ${SI.fmtTime(person.presence.lastSeen)}</span>` : '') : '';
-        b.innerHTML = `<strong>${esc(person.name)}</strong><span>${esc(sub)}</span>${pres || (person.hasCard ? '<span class="badge">card</span>' : '')}`;
+        b.innerHTML = `<span class="k-av" style="--h:${hue(person.name)}">${esc(initials(person.name))}</span>
+            <span class="k-who"><strong>${esc(person.name)}</strong><span>${esc(sub)}</span></span>${pres || (person.hasCard ? '<span class="badge" title="has a card">💳</span>' : '')}`;
         b.onclick = () => sign({ personId: person.id }, person.name);
         b.dataset.name = person.name.toLowerCase();
         return b;
     }));
     applyFilter();
 
+    $('#visitorSub').textContent = data.visitors.length ? `${data.visitors.length} signed in` : '';
     if (!data.visitors.length) {
-        visitorsEl.innerHTML = '<p class="muted">No visitors on site.</p>';
+        visitorsEl.innerHTML = '<p class="k-none">No visitors on site right now.</p>';
     } else {
         visitorsEl.replaceChildren(...data.visitors.map(v => {
             const row = document.createElement('div');
             row.className = 'visitor-row';
-            row.innerHTML = `<span><strong>${esc(v.name)}</strong> <span class="badge">badge ${v.badge}</span>${v.stale ? ' <span class="badge" title="signed in before today">⚠ since ' + esc(SI.fmtWhen(v.signedInAt)) + '</span>' : ''}<br>
-        <small class="muted">${esc([v.company, v.hostName ? `visiting ${v.hostName}` : null, v.vehicle].filter(Boolean).join(' · '))} · ${esc(sinceLabel(v.signedInAt))}</small></span>`;
+            row.innerHTML = `<span class="k-bdg"><small>BADGE</small><b>${esc(v.badge)}</b></span><span class="k-vt"><strong>${esc(v.name)}</strong>${v.stale ? ' <span class="badge" title="signed in before today">⚠ since ' + esc(SI.fmtWhen(v.signedInAt)) + '</span>' : ''}
+        <small class="muted">${esc([v.company, v.hostName ? `visiting ${v.hostName}` : null].filter(Boolean).join(' · '))} · ${esc(sinceLabel(v.signedInAt))}</small></span>`;
             const out = document.createElement('button');
             out.textContent = 'Sign out';
             out.onclick = () => visitorOut(v);
@@ -46,6 +59,32 @@ function render(data) {
         }));
     }
 }
+
+// ---- the moment that matters: a big, friendly confirmation anyone can read from across the hall ----
+let welcomeT = null;
+function greeting(kind) {
+    const h = new Date().getHours();
+    if (kind === 'in') return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+    return h < 12 ? 'See you soon' : h < 17 ? 'See you later' : 'Have a good evening';
+}
+function welcome(event, how) {
+    const w = $('#welcome');
+    const isIn = event.kind === 'in';
+    w.className = `k-welcome ${isIn ? 'in' : 'out'}`;
+    $('#wAv').style.setProperty('--h', hue(event.subjectName));
+    $('#wAv').textContent = initials(event.subjectName);
+    $('#wHi').textContent = `${greeting(event.kind)}, ${firstName(event.subjectName)}`;
+    $('#wWhat').textContent = `${isIn ? '✓ Signed IN' : '✓ Signed OUT'} at ${SI.fmtTime(event.at)}${how ? ' · ' + how : ''}`;
+    const undo = undoFor(event);
+    $('#wUndo').onclick = (e) => { e.stopPropagation(); closeWelcome(); undo.run(); };
+    $('#wDone').onclick = (e) => { e.stopPropagation(); closeWelcome(); };
+    const bar = $('#wBar'); bar.style.transition = 'none'; bar.style.width = '100%';
+    requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.transition = 'width 5s linear'; bar.style.width = '0%'; }));
+    clearTimeout(welcomeT); welcomeT = setTimeout(closeWelcome, 5000);
+    if (search && document.activeElement === search) search.blur();
+}
+function closeWelcome() { clearTimeout(welcomeT); $('#welcome').classList.add('hidden'); }
+$('#welcome').addEventListener('pointerdown', (e) => { if (e.target === $('#welcome')) closeWelcome(); });
 
 async function load() {
     try { render(await api('GET', '/api/state')); }
@@ -59,8 +98,7 @@ async function sign(body, label) {
     try {
         const data = await api('POST', '/api/sign', { ...body, source: body.cardUid ? 'card' : 'kiosk' });
         render(data.state);
-        const verb = data.event.kind === 'in' ? 'signed IN' : 'signed OUT';
-        notice(noticeEl, `${data.event.subjectName} ${verb} at ${SI.fmtTime(data.event.at)}.`, false, 8000, undoFor(data.event));
+        welcome(data.event, '');
         if (navigator.vibrate) navigator.vibrate(60);
     } catch (error) {
         notice(noticeEl, error.message || `Could not sign ${label || ''}.`, true);
@@ -104,7 +142,7 @@ async function visitorOut(v) {
 function signByCard(uid) {
     const token = localStorage.getItem('cardToken') || '';
     api('POST', '/api/sign', { cardUid: uid, source: 'card' }, token ? { 'X-Api-Token': token } : {})
-        .then(data => { render(data.state); notice(noticeEl, `${data.event.subjectName} signed ${data.event.kind.toUpperCase()} by card.`, false, 8000, undoFor(data.event)); })
+        .then(data => { render(data.state); welcome(data.event, 'by card'); })
         .catch(error => notice(noticeEl, error.message, true, 8000));
 }
 listenForCardWedge(signByCard, $('#cardHint'));

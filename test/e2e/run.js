@@ -78,7 +78,7 @@ async function main() {
 
         const ann = app.store.addPerson('Ann Example'); const bob = app.store.addPerson('Bob Sample'); app.store.addPerson('Cara Third');
 
-        await step('kiosk: search narrows the names, tapping signs in', async () => {
+        await step('kiosk: search narrows the names, tapping signs in, welcome screen greets them, Undo reverses it', async () => {
             const page = await cdpPage(cdpPort, `${base}/`);
             await page.until(`document.querySelectorAll('#people .person').length === 3`, 'three staff buttons');
             await page.evaluate(`(() => { const s = document.querySelector('#search'); s.value = 'ann'; s.dispatchEvent(new Event('input')); })()`);
@@ -86,6 +86,12 @@ async function main() {
             if (visible.length !== 1 || visible[0] !== 'ann example') throw new Error(`visible after search: ${JSON.stringify(visible)}`);
             await page.evaluate(`document.querySelector('#people .person:not(.hidden)').click()`);
             await page.until(`document.querySelector('#people .person.in') !== null`, 'Ann shown as in');
+            await page.until(`!document.querySelector('#welcome').classList.contains('hidden') && /, Ann$/.test(document.querySelector('#wHi').textContent) && /Signed IN/.test(document.querySelector('#wWhat').textContent)`, 'welcome screen greets Ann');
+            await page.evaluate(`document.querySelector('#wUndo').click()`);
+            await page.until(`document.querySelector('#welcome').classList.contains('hidden') && document.querySelector('#people .person.in') === null`, 'Undo closes the welcome and signs Ann back out');
+            if ((await api('GET', '/api/state')).people.find(p => p.id === ann.id).signedIn) throw new Error('Undo did not reach the server');
+            await page.evaluate(`document.querySelector('#people .person:not(.hidden)').click()`);
+            await page.until(`document.querySelector('#people .person.in') !== null`, 'Ann in again');
             const st = await api('GET', '/api/state');
             if (!st.people.find(p => p.id === ann.id).signedIn) throw new Error('Ann not signed in on the server');
             page.close();

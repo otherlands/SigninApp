@@ -12,17 +12,25 @@
 </head>
 
 <body class="kiosk">
-    <header class="top">
-        <div class="brand">
+    <header class="k-top">
+        <div class="k-brand">
             <div class="logo"></div>
             <div>
                 <h1 id="company">…</h1>
-                <div class="clock" id="clock"></div>
+                <div class="k-hint" id="greetHint">Tap your name — or tap your card on the reader</div>
             </div>
         </div>
-        <div class="row">
-            <span class="live" id="live"><i></i> live</span>
-            <div class="count-pill" id="countPill"><span>On site</span><b id="inCount">–</b></div>
+        <div class="k-time"><b id="time">--:--</b><span id="clock"></span></div>
+        <div class="k-onsite" id="countPill" title="People signed in right now">
+            <div class="k-ring">
+                <svg viewBox="0 0 80 80" aria-hidden="true">
+                    <defs><linearGradient id="kgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#00d4ff" /><stop offset="1" stop-color="#2ecc71" /></linearGradient></defs>
+                    <circle class="trk" cx="40" cy="40" r="34" fill="none" stroke-width="8" />
+                    <circle class="val" id="ringArc" cx="40" cy="40" r="34" fill="none" stroke-width="8" stroke-dasharray="213.6" stroke-dashoffset="213.6" />
+                </svg>
+                <b id="inCount">–</b>
+            </div>
+            <div class="k-onsite-t"><span>on site</span><span class="live" id="live"><i></i> live</span></div>
         </div>
     </header>
 
@@ -41,27 +49,42 @@
         <a class="go" href="/visitor">Visitor sign in →</a>
     </div>
 
-    <section class="panel">
-        <h2>Staff — tap your name to sign in or out</h2>
-        <input id="search" type="search" placeholder="Type your name to find it" autocomplete="off" aria-label="Find your name" style="margin-bottom:12px;width:100%">
+    <section class="k-panel">
+        <div class="k-lbl"><h2>Staff</h2><span class="k-sub">tap your name to sign in or out</span>
+            <input id="search" type="search" placeholder="🔍 Find your name" autocomplete="off" aria-label="Find your name">
+        </div>
         <div id="people" class="people" aria-live="polite"></div>
     </section>
 
-    <section class="panel">
-        <div class="row" style="justify-content:space-between">
-            <h2>Visitors on site</h2>
-            <a href="/visitor"><button class="primary">Visitor sign in</button></a>
+    <section class="k-bottom">
+        <div class="k-panel k-vis">
+            <div class="k-lbl"><h2>Visitors on site</h2><span class="k-sub" id="visitorSub"></span></div>
+            <div id="visitors"></div>
         </div>
-        <div id="visitors"></div>
+        <a href="/visitor" class="k-visit" aria-label="Visitor sign in">
+            <span class="k-visit-ic">👋</span>
+            <span><b>Visitor?</b><small>Sign in here</small></span>
+            <span class="k-arrow">→</span>
+        </a>
     </section>
 
     <p id="notice" class="notice" aria-live="assertive"></p>
 
-    <nav class="footer-links">
-        <a class="fire" href="/fire">FIRE ROLL CALL</a>
-        <a href="/admin">Admin</a>
-        <span id="cardHint" class="muted">Card reader: waiting…</span>
+    <nav class="k-foot">
+        <a class="k-fire" href="/fire">🚨 FIRE ROLL CALL</a>
+        <span id="cardHint" class="k-chip">Card reader: waiting…</span>
+        <a class="k-admin" href="/admin">Admin</a>
     </nav>
+
+    <div id="welcome" class="k-welcome hidden" role="status" aria-live="assertive">
+        <div class="k-welcome-card">
+            <div class="k-welcome-av" id="wAv"></div>
+            <div class="k-welcome-hi" id="wHi"></div>
+            <div class="k-welcome-what" id="wWhat"></div>
+            <div class="k-welcome-act"><button id="wUndo" class="ghost">Not me — undo</button><button id="wDone" class="primary">Done</button></div>
+            <div class="k-welcome-bar"><i id="wBar"></i></div>
+        </div>
+    </div>
 
     <script src="/shared.js"></script>
     <script src="/osk.js"></script>
