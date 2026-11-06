@@ -172,6 +172,17 @@ async function main() {
             await page.until(`document.querySelectorAll('#offsiteState .tile').length >= 6 && document.querySelector('#healthVerdict').textContent.trim().length > 0`, 'system health tiles');
             page.close();
         });
+        await step('fire page, everyday view: hub-style count, staff in as cards, staff out dimmed', async () => {
+            const st = await api('GET', '/api/state');
+            const inStaff = st.people.filter(p => p.signedIn).length, outStaff = st.people.length - inStaff;
+            const page = await cdpPage(cdpPort, `${base}/fire`);
+            await page.until(`document.querySelector('#bigCount').textContent === '${st.inCount}'`, `ring shows ${st.inCount}`);
+            await page.until(`document.querySelectorAll('#staff .pp:not(.out)').length === ${inStaff} && document.querySelectorAll('#staff .pp.out').length === ${outStaff}`, `${inStaff} in, ${outStaff} out`);
+            const sub = await page.evaluate(`document.querySelector('#subtitle').textContent`);
+            if (!sub.includes(`${inStaff} of ${st.people.length} staff`)) throw new Error(`subtitle: ${sub}`);
+            if (await page.evaluate(`document.querySelector('#startBtn').classList.contains('hidden')`)) throw new Error('START ROLL CALL hidden');
+            page.close();
+        });
         const rc = (await api('POST', '/api/fire/start', { source: 'fire-page', by: 'e2e' })).rollcall;
 
         await step('fire page: a marshal SAFE tick reaches the register', async () => {

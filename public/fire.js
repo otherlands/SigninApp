@@ -14,6 +14,35 @@ function marksFor(rc) {
     return map;
 }
 
+// ---- the everyday "who is on site" look (same design as the staff hub's "On site now") ----
+const SRC = { kiosk: '👆', card: '💳', desktop: '🖥', admin: '⚙', esp32: '💳', 'fire-page': '🔥', self: '📱', list: '📋', wifi: '📶', ble: '🔑', 'ble+wifi': '📶', webhook: '🔘', tap: '📱', visitor: '👆' };
+const SRC_NAME = { kiosk: 'the door screen', card: 'a card', desktop: 'their PC', admin: 'admin', esp32: 'the back-door reader', self: 'their phone', list: 'the Microsoft List', wifi: 'Wi-Fi', ble: 'key tag', 'ble+wifi': 'Wi-Fi + key tag', webhook: 'a wall button', tap: 'a phone tap' };
+const hue = (name) => { let h = 0; for (const c of String(name)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+const initials = (name) => { const p = String(name).trim().split(/\s+/); return ((p[0] || '')[0] || '').toUpperCase() + (p.length > 1 ? (p[p.length - 1][0] || '').toUpperCase() : ''); };
+const ago = (iso) => {
+    const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+    if (m < 1) return 'just now'; if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60); return h < 24 ? `${h}h ${m % 60}m` : `${Math.floor(h / 24)}d ${h % 24}h`;
+};
+// All staff (in and out) from the kiosk view, office network only. It only adds the dimmed "out" names and the
+// "of N staff" figure; who is IN always comes from /api/fire, the register the roll call freezes.
+const PEOPLE_KEY = 'fire-people';
+let people = JSON.parse(localStorage.getItem(PEOPLE_KEY) || 'null');
+let seenIn = null;          // ids on site at the last paint, to animate arrivals
+let peopleAt = 0;
+function loadPeople() {
+    if (!view || view.public) return;
+    api('GET', '/api/state').then(s => {
+        people = (s.people || []).map(p => ({ id: p.id, name: p.name }));
+        localStorage.setItem(PEOPLE_KEY, JSON.stringify(people));
+        if (view && !view.rollcall) render(view);
+    }).catch(() => { });
+}
+function setRing(frac) {
+    const C = 2 * Math.PI * 48;
+    $('#ringArc').style.strokeDashoffset = String(C * (1 - Math.max(0, Math.min(1, frac))));
+}
+
 function render(data) {
     view = data;
     const rc = data.rollcall;
@@ -22,14 +51,34 @@ function render(data) {
     const marks = marksFor(rc);
 
     document.body.classList.toggle('active', active);
+    document.body.classList.toggle('drill', active && Boolean(rc.drill));
     document.title = active ? `${rc.drill ? 'DRILL' : 'ROLL CALL'} · ${data.companyName}` : `On site · ${data.companyName}`;
-    $('#title').textContent = active ? (rc.drill ? 'FIRE DRILL (practice)' : 'FIRE ROLL CALL') : `${data.companyName} — who is on site`;
-    $('#bigCount').textContent = active ? rc.total : list.count;
-    $('#subtitle').textContent = active
+    const staffIn = list.staff, nOn = list.staff.length + list.visitors.length;
+    const allStaff = !active && people && !data.public ? people.length : null;
+    if (active) {
+        $('#title').textContent = rc.allSafe ? `✅ ALL ${rc.total} ACCOUNTED FOR` : (rc.drill ? 'FIRE DRILL (practice)' : '🔥 FIRE ROLL CALL');
+        $('#kicker').textContent = rc.drill ? 'practice drill · register frozen when it started' : 'register frozen when it started';
+        $('#bigCount').textContent = rc.safe;
+        $('#ringLabel').textContent = `of ${rc.total} safe`;
+        setRing(rc.total ? rc.safe / rc.total : 0);
+    } else {
+        $('#title').textContent = nOn === 0 ? 'Nobody is signed in' : (nOn === 1 ? '1 person in the building' : `${nOn} people in the building`);
+        $('#kicker').textContent = list.replica ? `mirror copy · last update ${fmtWhen(list.at)}` : 'from the door sign-in screen';
+        $('#bigCount').textContent = nOn;
+        $('#ringLabel').textContent = 'on site';
+        setRing(allStaff ? staffIn.length / allStaff : (nOn ? 1 : 0));
+    }
+    const first = [...staffIn].filter(p => !p.stale).sort((a, b) => Date.parse(a.since) - Date.parse(b.since))[0];
+    $('#subtitle').innerHTML = active
         ? (rc.allSafe
-            ? `ALL ${rc.total} ACCOUNTED FOR — everyone on the register is marked SAFE. Started ${fmtWhen(rc.startedAt)}${rc.startedBy ? ' by ' + rc.startedBy : ''}.`
-            : `Started ${fmtWhen(rc.startedAt)}${rc.startedBy ? ' by ' + rc.startedBy : ''} (${rc.source}). Register frozen at that moment.`)
-        : (list.replica ? `Mirror copy — last update from main server ${fmtWhen(list.at)}` : `Live register at ${fmtTime(list.at)}${list.loneWorker ? ' — LONE WORKER: one member of staff on site' : ''}`);
+            ? `Everyone on the register is marked SAFE. Started ${esc(fmtWhen(rc.startedAt))}${rc.startedBy ? ' by ' + esc(rc.startedBy) : ''}.`
+            : `Started ${esc(fmtWhen(rc.startedAt))}${rc.startedBy ? ' by ' + esc(rc.startedBy) : ''} (${esc(rc.source)}). <b>${rc.total}</b> on the register.`)
+        : `<b>${staffIn.length}</b>${allStaff ? ` of ${allStaff}` : ''} staff · <b>${list.visitors.length}</b> visitor${list.visitors.length === 1 ? '' : 's'}${first ? ` · first in ${esc(first.name.split(' ')[0])} at ${esc(fmtTime(first.since))}` : ''}`;
+    const chips = [];
+    if (!active && list.loneWorker) chips.push('<span class="fx-chip warn">⚠ Lone worker — only one person on site</span>');
+    const stale = list.staff.filter(p => p.stale).length + list.visitors.filter(v => v.stale).length;
+    if (stale) chips.push(`<span class="fx-chip warn">⚠ <b>${stale}</b> still signed in from before today</span>`);
+    $('#chips').innerHTML = chips.join('');
     document.body.classList.toggle('allsafe', active && Boolean(rc.allSafe));
     // Served through the public proxy: read-only. Marshal controls are refused by the server from outside anyway.
     document.body.classList.toggle('public', Boolean(data.public));
@@ -46,13 +95,48 @@ function render(data) {
         $('#unaccountedCount').textContent = rc.unaccounted;
     }
 
-    $('#staffHead').textContent = `Staff (${list.staff.length})`;
-    $('#visitorHead').textContent = `Visitors (${list.visitors.length})`;
-    renderRows($('#staff'), list.staff, 'staff', marks, active);
-    renderRows($('#visitors'), list.visitors, 'visitor', marks, active);
-    if (!list.staff.length) $('#staff').innerHTML = '<p class="muted">No staff signed in.</p>';
-    if (!list.visitors.length) $('#visitors').innerHTML = '<p class="muted">No visitors signed in.</p>';
-    $('#updated').textContent = `updated ${fmtTime(new Date().toISOString())}`;
+    $('#staffHead').textContent = active ? `Staff (${list.staff.length})` : 'Staff';
+    $('#visitorHead').textContent = active ? `Visitors (${list.visitors.length})` : 'Visitors on site';
+    if (active) {
+        $('#staff').className = 'roll'; $('#visitors').className = 'roll';
+        renderRows($('#staff'), list.staff, 'staff', marks, active);
+        renderRows($('#visitors'), list.visitors, 'visitor', marks, active);
+        if (!list.staff.length) $('#staff').innerHTML = '<p class="muted">No staff signed in.</p>';
+        if (!list.visitors.length) $('#visitors').innerHTML = '<p class="muted">No visitors signed in.</p>';
+        $('#visitorBlock').classList.remove('hidden');
+        seenIn = null;
+    } else {
+        renderCards(list, data.public);
+    }
+    $('#updated').textContent = `Updated ${fmtTime(new Date().toISOString())}`;
+    $('#footNote').textContent = active
+        ? 'every marshal\'s SAFE / MISSING tick appears on every phone at once; the list is the register frozen when the roll call started.'
+        : 'changes appear the moment someone taps in or out at the door, on a card, or from their PC.';
+}
+
+function renderCards(list, isPublic) {
+    const now = new Set([...list.staff.map(p => 's' + p.id), ...list.visitors.map(v => 'v' + v.id)]);
+    const fresh = (key) => (seenIn && !seenIn.has(key) ? ' arrive' : '');
+    const inStaff = [...list.staff].sort((a, b) => Date.parse(a.since) - Date.parse(b.since));
+    const inIds = new Set(inStaff.map(p => p.id));
+    const out = (people && !isPublic ? people.filter(p => !inIds.has(p.id)) : []).sort((a, b) => a.name.localeCompare(b.name));
+    $('#staff').className = 'fx-people';
+    $('#staff').innerHTML = inStaff.map(p => {
+        const when = p.stale ? `⚠ in since ${fmtWhen(p.since)}` : `in ${fmtTime(p.since)} · ${ago(p.since)}`;
+        const pres = p.presence?.state === 'probably-left' ? ` · 📵 left ${fmtTime(p.presence.lastSeen)}?` : '';
+        const title = `${p.name} — signed in ${fmtWhen(p.since)}${SRC_NAME[p.source] ? ' by ' + SRC_NAME[p.source] : ''}`;
+        return `<div class="pp${p.stale ? ' stale' : ''}${fresh('s' + p.id)}" title="${esc(title)}"><div class="av" style="--h:${hue(p.name)}">${esc(initials(p.name))}</div>
+            <div class="who2"><div class="nm">${esc(p.name)}</div><div class="tm">${esc(when + pres)}${SRC[p.source] ? `<span class="src">${SRC[p.source]}</span>` : ''}</div></div></div>`;
+    }).join('') + out.map(p => `<div class="pp out" title="${esc(p.name)} — not signed in"><div class="av" style="--h:${hue(p.name)}">${esc(initials(p.name))}</div>
+            <div class="who2"><div class="nm">${esc(p.name)}</div><div class="tm">out</div></div></div>`).join('')
+        || '<p class="muted">No staff signed in.</p>';
+    $('#visitors').className = 'fx-vis';
+    $('#visitors').innerHTML = list.visitors.map(v => {
+        const det = [v.company, v.hostName ? `visiting ${v.hostName}` : '', v.vehicle, v.stale ? `⚠ since ${fmtWhen(v.since)}` : `in ${fmtTime(v.since)} · ${ago(v.since)}`].filter(Boolean).join(' · ');
+        return `<div class="vv${fresh('v' + v.id)}"><div class="bdg"><small>BADGE</small><b>${esc(v.badge ?? '–')}</b></div><div><div class="nm">${esc(v.name)}</div><div class="dt">${esc(det)}</div></div></div>`;
+    }).join('');
+    $('#visitorBlock').classList.toggle('hidden', !list.visitors.length);
+    seenIn = now;
 }
 
 function renderRows(el, rows, type, marks, active) {
@@ -162,6 +246,7 @@ async function load() {
         $('#live').className = 'live';
         await replayQueue();
         render(data);
+        if (Date.now() - peopleAt > 300_000) { peopleAt = Date.now(); loadPeople(); }
         if (data.rollcall && !wasActive) alertUser();
     } catch {
         // Server unreachable — show the last register we saw, clearly labelled. Never a blank page during a fire.
@@ -196,6 +281,7 @@ load();
 showQueue();
 // Live push for instant ticks across every phone; the 10 s poll stays as the offline detector and cache refresher.
 SI.live(load, { fallbackMs: 10_000, debounceMs: 0 });
+setInterval(() => { if (view && !view.rollcall && !offline) render(view); }, 60_000);   // keep "· 1h 56m" true
 // Offline shell + last register, only where the browser allows it (HTTPS or localhost). Harmless elsewhere.
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))) {
     navigator.serviceWorker.register('/sw.js').then(() => { $('#swState').textContent = 'offline copy: ready'; }).catch(() => { });
