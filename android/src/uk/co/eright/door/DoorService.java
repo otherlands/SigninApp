@@ -139,6 +139,13 @@ public class DoorService extends Service {
             if (!company.isEmpty() && !company.equals(who.optString("companyName"))) { if (n.equals(officeNet)) leftOffice(); return; }
             // 2. with the key
             JSONObject me = Api.call(server, "GET", "/api/me", Prefs.key(this), null, n);
+            // Through the public name (signin.eright.co.uk) the register answers from anywhere, e.g. home Wi-Fi: that is
+            // not the office. Only an answer the register itself marks as not-from-outside counts as being here.
+            if (me.optBoolean("public")) {
+                Log.i(TAG, "probe: register answered on " + n + " but from outside, so not the office");
+                if (n.equals(officeNet)) leftOffice();
+                return;
+            }
             JSONObject person = me.optJSONObject("person");
             if (person == null) {
                 Prefs.put(this, "problem", "This phone's key is no longer valid (a new I'm SAFE link was issued). Open the new link on this phone to set the app up again.");

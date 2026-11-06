@@ -54,8 +54,9 @@
         function show() {
             $('#company').textContent = me.companyName;
             if (!me.person) return noKey();
-            // Android: hand the server address and this key to the eRIGHT Door app (custom scheme: nothing goes to a server)
-            if (/Android/i.test(navigator.userAgent)) {
+            // Android: hand the server address and this key to the eRIGHT Door app (custom scheme: nothing goes to a server).
+            // Only on the office network: the app learns "this network is the office" from where it was set up.
+            if (/Android/i.test(navigator.userAgent) && !me.public) {
                 const p = new URLSearchParams({ server: location.origin, k: key() });
                 $('#appLink').href = `intent://setup?${p}#Intent;scheme=eright-door;package=uk.co.eright.door;S.browser_fallback_url=${encodeURIComponent(location.origin + '/app')};end`;
                 $('#appSetup').classList.remove('hidden');
