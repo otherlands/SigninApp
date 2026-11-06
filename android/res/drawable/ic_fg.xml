@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- a door with a green tick, inside the adaptive-icon safe zone (centre 66 of 108) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:pathData="M37,27h34v56h-34z" />
+    <path android:fillColor="#5B3FE0" android:pathData="M41,31h26v52h-26z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M61,57m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0" />
+    <path android:fillColor="#2ECC71" android:pathData="M62,76m-12,0a12,12 0,1 1,24 0a12,12 0,1 1,-24 0" />
+    <path android:fillColor="#FFFFFF" android:pathData="M56.5,76.5l3.8,3.8l7.5,-8.3l-2.2,-2l-5.4,6l-1.6,-1.6z" />
+</vector>

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0a0d1a">
+    <title>eRIGHT Door app</title>
+    <link rel="icon" href="/favicon.svg">
+    <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+    <header class="top">
+        <div class="brand">
+            <div class="logo"></div>
+            <h1>eRIGHT Door — the phone app</h1>
+        </div>
+    </header>
+    <section class="panel">
+        <p style="font-size:1.1rem">Signs you <b>in</b> when your phone joins the office Wi-Fi, <b>out</b> when it has left the Wi-Fi and is over
+            150 m from the office, and raises a full-screen alarm with an <b>I'M SAFE</b> button during a fire roll call. Android 10 or newer.</p>
+        <a href="/eright-door.apk" download><button class="primary" style="width:100%;font-size:1.2rem">⬇ Download the app (APK)</button></a>
+        <h2 style="margin-top:24px">Set it up — about 2 minutes</h2>
+        <ol style="font-size:1.05rem;line-height:1.55">
+            <li><b>Install:</b> open the downloaded file. Android asks to allow installs from this browser: <i>Settings → Allow from this
+                    source</i>, go back, <b>Install</b>.</li>
+            <li><b>Link it to you:</b> open your personal <b>I'm SAFE</b> link (the admin sends it to you) on this phone, on the office Wi-Fi, and
+                tap <b>📱 Set up the eRIGHT Door app</b>.</li>
+            <li><b>Permissions</b> (the app lists them with a <b>Fix</b> button each):
+                <ul>
+                    <li>Notifications — <b>Allow</b></li>
+                    <li>Location — <b>Precise</b>, then <b>Allow all the time</b> (how the app knows you have left; your location stays on the phone)</li>
+                    <li>Full-screen alarm — <b>on</b></li>
+                    <li>Battery — <b>Unrestricted</b> (Samsung otherwise puts it to sleep)</li>
+                </ul>
+            </li>
+            <li>Tap <b>Test the alarm</b> in the app: the roll-call screen should fill the phone. Nothing is sent.</li>
+        </ol>
+        <p class="muted">Your location is never sent anywhere: the phone learns where the office is while it is on the office Wi-Fi and only
+            ever tells the register "in" or "out". Uninstall it any time; your sign-ins at the door screen keep working as before.</p>
+    </section>
+</body>
+
+</html>

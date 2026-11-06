@@ -246,7 +246,7 @@ function personCard(p, d) {
         if (!confirm(`Issue a new "I'm SAFE" link for ${p.name}? Any earlier link for them stops working.`)) return;
         api('POST', `/api/people/${p.id}/safe-link`, {}).then(r => {
             navigator.clipboard?.writeText(r.link);
-            toast(`Link for ${p.name} copied — send it to them privately; they open it once on their phone and add it to the home screen (the key is after the #, which never reaches any server log): ${r.link}`, false, 30000);
+            toast(`Link for ${p.name} copied — send it to them privately; they open it once on their phone and add it to the home screen (the key is after the #, which never reaches any server log). On Android that page also sets up the eRIGHT Door app (download: /app): ${r.link}`, false, 30000);
         }).catch(showError);
     };
     act('remove').onclick = () => { if (confirm(`Remove ${p.name} from the door screen? Their history is kept.`)) api('DELETE', `/api/people/${p.id}`).then(r => { render(r); toast(`${p.name} removed.`); }).catch(showError); };

@@ -21,6 +21,10 @@
         <h1 id="heading" style="font-size:2rem">Checking…</h1>
         <p id="message" class="muted" style="font-size:1.2rem"></p>
         <div id="picker" class="people hidden" style="margin-top:16px"></div>
+        <div id="appSetup" class="hidden" style="margin-top:22px">
+            <a id="appLink" href="#"><button class="primary" style="width:100%">📱 Set up the eRIGHT Door app on this phone</button></a>
+            <p class="muted" style="font-size:.85rem;margin-top:8px">Signs you in when your phone joins the office Wi-Fi, out when you have left, and alarms on a fire roll call. If the app is not installed yet, this opens the download page first.</p>
+        </div>
         <p class="muted" style="margin-top:24px;font-size:.9rem">This page talks to the sign-in server. If it cannot be reached (no office Wi-Fi, no VPN), tell the person
             running the roll call in person or by phone — do not assume this page got through.</p>
     </section>
@@ -50,6 +54,12 @@
         function show() {
             $('#company').textContent = me.companyName;
             if (!me.person) return noKey();
+            // Android: hand the server address and this key to the eRIGHT Door app (custom scheme: nothing goes to a server)
+            if (/Android/i.test(navigator.userAgent)) {
+                const p = new URLSearchParams({ server: location.origin, k: key() });
+                $('#appLink').href = `intent://setup?${p}#Intent;scheme=eright-door;package=uk.co.eright.door;S.browser_fallback_url=${encodeURIComponent(location.origin + '/app')};end`;
+                $('#appSetup').classList.remove('hidden');
+            }
             $('#picker').classList.remove('hidden');
             $('#heading').textContent = me.person.name;
             if (!me.rollcall) { $('#message').textContent = 'No roll call is running right now.'; $('#picker').replaceChildren(); return; }

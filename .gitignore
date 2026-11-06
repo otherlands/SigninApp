@@ -9,3 +9,7 @@ data/
 firmware/door-reader/include/config.h
 firmware/**/.pio/
 
+
+# Android build output (the published APK is public/eright-door.apk)
+android/build/
+*.jks

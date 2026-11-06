@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The register is plain http on the office LAN until go-live step 6 (https://signin.eright.co.uk). The app only
+     ever talks to the address that came with the person's own setup link. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
