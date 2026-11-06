@@ -1266,3 +1266,79 @@ body.kiosk .person.bday .k-who span { color: #ffe08a; font-weight: 700; }
     100% { opacity: 0; transform: translate(var(--tx), calc(var(--ty) + 260px)) rotate(var(--r)) scale(1); }
 }
 @media (prefers-reduced-motion: reduce) { .k-bday, .k-bday::after, .k-bday-ic, .k-bunting i, .k-hat { animation: none !important; } }
+
+/* ---------- kiosk: the birthday SHOW when the birthday person signs in (2026-11-06) ----------
+   Full screen for 12 s: spinning light rays, twinkling stars, ten fireworks, a rush of balloons, a crowned avatar
+   in a spinning rainbow ring, "Happy Birthday" dropping in letter by letter, their name in gold. Everything moves
+   with transform/opacity only (GPU-composited on the Pi). Closed at once by a roll call. */
+.k-show { position: fixed; inset: 0; z-index: 950; display: grid; place-items: center; overflow: hidden; text-align: center; color: #fff;
+          background: radial-gradient(circle at 50% 42%, #5b2a8c 0%, #2a1250 38%, #0b0820 75%); }
+.k-show-rays { position: absolute; left: 50%; top: 42%; width: 220vmax; height: 220vmax; margin: -110vmax 0 0 -110vmax; opacity: .22;
+               background: repeating-conic-gradient(from 0deg, rgba(255, 214, 102, .9) 0deg 7deg, transparent 7deg 18deg, rgba(255, 95, 143, .7) 18deg 24deg, transparent 24deg 36deg);
+               -webkit-mask: radial-gradient(circle, #000 0%, transparent 55%); mask: radial-gradient(circle, #000 0%, transparent 55%); }
+.k-show.go .k-show-rays { animation: k-spin 26s linear infinite; }
+@keyframes k-spin { to { transform: rotate(360deg); } }
+.k-show-stars i { position: absolute; width: 4px; height: 4px; border-radius: 50%; background: #fff; box-shadow: 0 0 8px 2px rgba(255, 255, 255, .7);
+                  transform: scale(var(--s)); animation: k-twinkle var(--d) ease-in-out var(--dl) infinite; }
+@keyframes k-twinkle { 50% { opacity: .1; transform: scale(calc(var(--s) * .4)); } }
+.k-show-fx { position: absolute; inset: 0; pointer-events: none; }
+.k-show-in { position: relative; z-index: 2; padding: 20px; }
+.k-show-kick { font-size: 1.25rem; font-weight: 800; letter-spacing: .35em; text-transform: uppercase; color: #ffe08a; text-shadow: 0 0 18px rgba(255, 204, 51, .6); }
+.k-show-av { position: relative; width: 180px; height: 180px; margin: 56px auto 8px; }
+.k-show-av .ring { position: absolute; inset: -12px; border-radius: 50%;
+                   background: conic-gradient(#ff5f8f, #ffcc33, #2ecc71, #00d4ff, #7c5cff, #ff4fd8, #ff5f8f);
+                   -webkit-mask: radial-gradient(circle, transparent 62%, #000 63%); mask: radial-gradient(circle, transparent 62%, #000 63%);
+                   filter: drop-shadow(0 0 18px rgba(255, 204, 51, .55)); }
+.k-show.go .k-show-av .ring { animation: k-spin 3.5s linear infinite; }
+.k-show-av b { position: absolute; inset: 0; border-radius: 50%; display: grid; place-items: center; font-size: 4.2rem; font-weight: 900;
+               background: linear-gradient(135deg, hsl(var(--h), 75%, 55%), hsl(calc(var(--h) + 50), 75%, 40%)); box-shadow: 0 16px 50px hsla(var(--h), 80%, 50%, .6); }
+.k-show-av .crown { position: absolute; left: 50%; top: -54px; font-size: 3.6rem; translate: -50% 0; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .45)); }
+.k-show.go .k-show-av { animation: k-zoom .9s cubic-bezier(.2, 1.4, .3, 1) both; }
+.k-show.go .k-show-av .crown { animation: k-crown 1s cubic-bezier(.2, 1.5, .3, 1) .5s both, k-bob 1.8s ease-in-out 1.6s infinite; }
+@keyframes k-zoom { from { transform: scale(0) rotate(-30deg); } }
+@keyframes k-crown { from { transform: translateY(-160px) rotate(-40deg); opacity: 0; } }
+.k-show-hb { font-size: 3.4rem; font-weight: 900; line-height: 1.1; margin-top: 8px; color: #fff; text-shadow: 0 4px 24px rgba(255, 95, 143, .6); white-space: nowrap; }
+.k-show-hb span { display: inline-block; }
+.k-show-hb span.sp { width: .35em; }
+.k-show.go .k-show-hb span:not(.sp) { animation: k-drop .55s cubic-bezier(.2, 1.6, .4, 1) calc(.45s + var(--i) * .06s) both, k-wave 1.6s ease-in-out calc(1.5s + var(--i) * .08s) infinite; }
+.k-show-hb span:nth-child(4n+1) { color: #ffe08a; } .k-show-hb span:nth-child(4n+2) { color: #ff9ec4; }
+.k-show-hb span:nth-child(4n+3) { color: #a9f0ff; } .k-show-hb span:nth-child(4n) { color: #c9b8ff; }
+@keyframes k-drop { from { transform: translateY(-120px) scale(.3) rotate(-25deg); opacity: 0; } }
+@keyframes k-wave { 50% { transform: translateY(-12px); } }
+.k-show-name { font-size: 5.4rem; font-weight: 900; line-height: 1; margin-top: 4px; letter-spacing: .01em;
+               background: linear-gradient(180deg, #fff6c9 0%, #ffd34d 45%, #ff9f1c 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+               filter: drop-shadow(0 6px 26px rgba(255, 190, 40, .55)); }
+.k-show.go .k-show-name { animation: k-name 1s cubic-bezier(.2, 1.4, .3, 1) 1.3s both, k-pulse 2.4s ease-in-out 2.4s infinite; }
+@keyframes k-name { from { transform: scale(.2); opacity: 0; } }
+@keyframes k-pulse { 50% { transform: scale(1.06); } }
+.k-show-what { margin-top: 16px; font-size: 1.45rem; font-weight: 800; color: #bff5d6; }
+.k-show-from { margin-top: 6px; font-size: 1.1rem; color: rgba(255, 255, 255, .85); }
+.k-show.go .k-show-what, .k-show.go .k-show-from, .k-show.go .k-show-act { animation: k-up .6s ease-out 1.9s both; }
+.k-show.go .k-show-kick { animation: k-up .6s ease-out .1s both; }
+@keyframes k-up { from { transform: translateY(24px); opacity: 0; } }
+.k-show-act { display: flex; gap: 14px; justify-content: center; margin-top: 24px; }
+.k-show-btn { min-width: 260px; font-size: 1.3rem; font-weight: 900; border: 0; color: #2a1250;
+              background: linear-gradient(135deg, #ffe08a, #ffb347); box-shadow: 0 10px 34px rgba(255, 190, 40, .5); }
+.k-show-undo { min-width: 180px; color: rgba(255, 255, 255, .8); }
+.k-show-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 8px; background: rgba(255, 255, 255, .08); }
+.k-show-bar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #ff5f8f, #ffcc33, #2ecc71, #00d4ff, #7c5cff); }
+
+/* fireworks */
+.k-fw { position: absolute; width: 0; height: 0; }
+.k-fw b { position: absolute; left: -60px; top: -60px; width: 120px; height: 120px; border-radius: 50%;
+          background: radial-gradient(circle, #fff 0%, var(--c) 30%, transparent 70%); animation: k-flash .7s ease-out forwards; }
+.k-fw i { position: absolute; left: -4px; top: -4px; width: 8px; height: 8px; border-radius: 50%; background: var(--c);
+          box-shadow: 0 0 10px 2px var(--c); animation: k-spark 1.5s cubic-bezier(.12, .75, .3, 1) forwards; }
+@keyframes k-flash { from { transform: scale(.1); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
+@keyframes k-spark {
+    0% { transform: translate(0, 0) scale(1.2); opacity: 1; }
+    75% { opacity: 1; }
+    100% { transform: translate(var(--tx), calc(var(--ty) + 70px)) scale(.3); opacity: 0; }
+}
+/* balloon rush */
+.k-rush { position: absolute; left: var(--x); bottom: -150px; width: 70px; height: 86px; border-radius: 50% 50% 47% 53% / 56% 56% 44% 44%;
+          background: radial-gradient(circle at 32% 26%, rgba(255, 255, 255, .85), rgba(255, 255, 255, 0) 20%), radial-gradient(circle at 50% 55%, var(--c), color-mix(in srgb, var(--c) 55%, #000));
+          transform: scale(var(--s)); animation: k-rushup var(--d) cubic-bezier(.3, .1, .5, 1) var(--dl) both; }
+.k-rush::after { content: ''; position: absolute; left: 50%; top: 100%; width: 2px; height: 90px; background: rgba(255, 255, 255, .45); }
+@keyframes k-rushup { from { transform: translate(0, 0) scale(var(--s)); } to { transform: translate(40px, -135vh) rotate(8deg) scale(var(--s)); } }
+@media (prefers-reduced-motion: reduce) { .k-show *, .k-show { animation: none !important; } }

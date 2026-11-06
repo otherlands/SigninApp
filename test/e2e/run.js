@@ -195,6 +195,15 @@ async function main() {
             await page.until(`!document.querySelector('#bday').classList.contains('hidden') && /Happy Birthday, Bob!/.test(document.querySelector('#bdayText').textContent)`, 'birthday banner for Bob');
             await page.until(`document.querySelectorAll('#party .k-balloon').length > 0 && document.querySelector('#people .person.bday')?.dataset.name === 'bob sample'`, 'balloons + Bob\'s tile');
             if ((await page.evaluate(`getComputedStyle(document.querySelector('#party')).pointerEvents`)) !== 'none') throw new Error('the party layer could take taps');
+            // Bob is in: tapping signs him out (birthday card), tapping again signs him IN -> the full-screen show
+            await page.evaluate(`[...document.querySelectorAll('#people .person')].find(b => b.dataset.name === 'bob sample').click()`);
+            await page.until(`/Happy Birthday, Bob!/.test(document.querySelector('#wHi').textContent) && /Signed OUT/.test(document.querySelector('#wWhat').textContent) && document.querySelector('#bdayShow').classList.contains('hidden')`, 'birthday sign-out card (no show)');
+            await page.evaluate(`document.querySelector('#wDone').click(); [...document.querySelectorAll('#people .person')].find(b => b.dataset.name === 'bob sample').click()`);
+            await page.until(`!document.querySelector('#bdayShow').classList.contains('hidden') && document.querySelector('#sName').textContent === 'Bob!' && /Signed IN/.test(document.querySelector('#sWhat').textContent)`, 'birthday show on sign-in');
+            await page.until(`document.querySelectorAll('#sFx .k-fw').length > 0`, 'fireworks');
+            if (!(await api('GET', '/api/state')).people.find(p => p.id === bob.id).signedIn) throw new Error('Bob not signed in on the server');
+            await page.evaluate(`document.querySelector('#sDone').click()`);
+            await page.until(`document.querySelector('#bdayShow').classList.contains('hidden') && document.querySelector('#sFx').children.length === 0`, '"Thank you!" closes the show');
             page.close();
         });
         const rc = (await api('POST', '/api/fire/start', { source: 'fire-page', by: 'e2e' })).rollcall;
@@ -202,7 +211,7 @@ async function main() {
         await step('kiosk birthday: the party disappears the moment a roll call starts', async () => {
             const page = await cdpPage(cdpPort, `${base}/`);
             await page.until(`!document.querySelector('#rollcallBanner').classList.contains('hidden')`, 'roll call banner');
-            await page.until(`document.querySelector('#bday').classList.contains('hidden') && document.querySelector('#party').children.length === 0 && !document.querySelector('#people .person.bday')`, 'no party during a roll call');
+            await page.until(`document.querySelector('#bday').classList.contains('hidden') && document.querySelector('#party').children.length === 0 && !document.querySelector('#people .person.bday') && document.querySelector('#bdayShow').classList.contains('hidden')`, 'no party during a roll call');
             page.close();
         });
 

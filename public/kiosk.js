@@ -21,6 +21,7 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const joinNames = (n) => n.length <= 1 ? (n[0] || '') : `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}`;
 function renderParty(data) {
     const list = data.rollcall ? [] : (data.birthdays || []);
+    if (data.rollcall && !$('#bdayShow').classList.contains('hidden')) closeShow();
     const key = list.map(b => b.id).join(',');
     document.body.classList.toggle('bday', list.length > 0);
     $('#bday').classList.toggle('hidden', !list.length);
@@ -118,6 +119,7 @@ function welcome(event, how) {
     const w = $('#welcome');
     const isIn = event.kind === 'in';
     const party = event.subjectType !== 'visitor' && bdayIds().has(event.subjectId);
+    if (party && isIn) return birthdayShow(event, how);
     w.className = `k-welcome ${isIn ? 'in' : 'out'}${party ? ' bday' : ''}`;
     $('#wAv').style.setProperty('--h', hue(event.subjectName));
     $('#wAv').textContent = initials(event.subjectName);
@@ -136,6 +138,57 @@ function welcome(event, how) {
 }
 function closeWelcome() { clearTimeout(welcomeT); $('#welcome').classList.add('hidden'); }
 $('#welcome').addEventListener('pointerdown', (e) => { if (e.target === $('#welcome')) closeWelcome(); });
+
+// ---- the birthday person signs IN: a full-screen show (12 s, or "Thank you!"). Visual only: the door Pi's
+// panel has no speakers we can rely on (HDMI audio, no EDID), so there is deliberately no sound. ----
+let showT = null; const showTimers = [];
+const SHOW_MS = 12000;
+const FIREWORKS = [[22, 30], [78, 26], [50, 16], [30, 72], [70, 70], [50, 46], [12, 52], [88, 50], [36, 20], [64, 40]];
+function closeShow() {
+    clearTimeout(showT); showTimers.splice(0).forEach(clearTimeout);
+    $('#bdayShow').classList.add('hidden'); $('#bdayShow').classList.remove('go');
+    $('#sFx').replaceChildren(); $('#sStars').replaceChildren();
+}
+function firework(x, y) {
+    const fx = $('#sFx');
+    const el = document.createElement('div');
+    el.className = 'k-fw'; el.style.left = x + '%'; el.style.top = y + '%';
+    const c = pick(PARTY_COLOURS), c2 = pick(PARTY_COLOURS);
+    el.innerHTML = '<b></b>' + Array.from({ length: 30 }, (_, i) => {
+        const a = (i / 30) * Math.PI * 2 + rnd(-.08, .08), d = rnd(110, 210);
+        return `<i style="--tx:${(Math.cos(a) * d).toFixed(0)}px;--ty:${(Math.sin(a) * d).toFixed(0)}px;--c:${i % 3 ? c : c2}"></i>`;
+    }).join('');
+    el.style.setProperty('--c', c);
+    fx.append(el);
+    showTimers.push(setTimeout(() => el.remove(), 1900));
+}
+function birthdayShow(event, how) {
+    closeWelcome(); closeShow();
+    const s = $('#bdayShow');
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    s.querySelector('.k-show-av').style.setProperty('--h', hue(event.subjectName));
+    $('#sAv').textContent = initials(event.subjectName);
+    $('#sHb').innerHTML = [...'Happy Birthday'].map((ch, i) => ch === ' ' ? '<span class="sp"> </span>' : `<span style="--i:${i}">${esc(ch)}</span>`).join('');
+    $('#sName').textContent = `${firstName(event.subjectName)}!`;
+    $('#sWhat').textContent = `✓ Signed IN at ${SI.fmtTime(event.at)}${how ? ' · ' + how : ''} — have a brilliant day!`;
+    $('#sFrom').textContent = `from everyone at ${state?.companyName || 'the office'} 💜`;
+    $('#sStars').innerHTML = Array.from({ length: 36 }, () => `<i style="left:${rnd(0, 100).toFixed(1)}%;top:${rnd(0, 100).toFixed(1)}%;--d:${rnd(1.2, 2.8).toFixed(2)}s;--dl:-${rnd(0, 2.8).toFixed(2)}s;--s:${rnd(.5, 1.4).toFixed(2)}"></i>`).join('');
+    s.classList.remove('hidden'); void s.offsetWidth; s.classList.add('go');
+    if (!reduce) {
+        FIREWORKS.forEach(([x, y], i) => showTimers.push(setTimeout(() => firework(x, y), 250 + i * 520)));
+        // a rush of balloons from the bottom of the screen, once
+        const rush = Array.from({ length: 16 }, () => `<i class="k-rush" style="--x:${rnd(2, 95).toFixed(1)}%;--d:${rnd(4.5, 7.5).toFixed(1)}s;--dl:${rnd(0, 1.6).toFixed(2)}s;--c:${pick(PARTY_COLOURS)};--s:${rnd(.8, 1.35).toFixed(2)}"></i>`).join('');
+        $('#sFx').insertAdjacentHTML('beforeend', `<div class="k-rushes">${rush}</div>`);
+    }
+    const bar = $('#sBar'); bar.style.transition = 'none'; bar.style.width = '100%';
+    requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.transition = `width ${SHOW_MS / 1000}s linear`; bar.style.width = '0%'; }));
+    const undo = undoFor(event);
+    $('#sUndo').onclick = (e) => { e.stopPropagation(); closeShow(); undo.run(); };
+    $('#sDone').onclick = (e) => { e.stopPropagation(); closeShow(); };
+    showT = setTimeout(closeShow, SHOW_MS);
+    if (search && document.activeElement === search) search.blur();
+}
+$('#bdayShow').addEventListener('pointerdown', (e) => { if (!e.target.closest('button')) closeShow(); });
 
 async function load() {
     try { render(await api('GET', '/api/state')); }
