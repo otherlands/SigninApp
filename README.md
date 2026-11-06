@@ -59,6 +59,7 @@ The original one-file JSON version is preserved in git history (`git show 6eab63
 | `a7b09ac`…`f09c953` | 2026-09-27 | PN532 arrived; WIRING.md/.html with photos; **first real cards read** (back-door reader) |
 | `6558a2f` `de10b26` | 2026-09-27 | **v3.4–3.6 Presence**: Wi-Fi brace (UniFi client list) + BLE brace (key tags heard by door/anchor scanners), direction from scanner sequence, auto sign-in, badge-not-act on absence, auto sign-out only when inference undoes inference and both braces agree; ESP32 firmware BLE scan; Pi BLE scanner; enrolment pickers. **Live on CT 106 21:35Z** via `deploy/upgrade-ct106.sh` |
 | `5e0b842` | 2026-10-19 | **v3.7 audit fixes + foundations + device tokens + admin sessions + live screens** — see "v3.7: audit fixes and foundations". **Live on CT 106 18:30Z** |
+| `4d491f5` `d924ee4` `659f4cd` + 1.0.3 | 2026-11-06 | **Wi-Fi presence live + eRIGHT Door Android app** — UniFi polling through a pinned certificate (`unifi:eright-office`), wired clients excluded, Alan's S25 enrolled; `/api/me/sign` (key-bound, idempotent, out-only from outside); the app (no Gradle, signed from The Vault) tested end to end on a moto g13 against a copy of the register: auto IN, no OUT at 9 m, OUT at 1.5 km (mock), alarm 0.7 s after a drill on a locked phone, I'M SAFE. See "eRIGHT Door phone app". Off-Wi-Fi sign-out and alarms need go-live step 6 |
 | `0972800` `a6fb0c8` `fb8df6d` | 2026-11-06 | **Birthdays** — saved per person in Admin → Staff (day + month, no year; admin-only), the door screen celebrates by itself on the day (bunting, balloons, ribbons, confetti, banner, party-hat tile), a 12 s full-screen **birthday show** when they tap in, *Celebrate today* tick for today only, hidden during a roll call; unit + e2e tests. Tuned for the Pi (Chromium ≈ 0.9 core with the party running, 56 °C, not throttled). **Live 11:38Z; George Scoley's birthday (6 Nov, as Alan said) saved and celebrating on the panel** |
 | `b5eee9c` | 2026-11-06 | **Door screen redesign** — kiosk `/` in the hub's design for the 10" panel (clock, ring, initials tiles, visitor badges, full-screen "Good morning, Alan ✓" with Undo); e2e checks the welcome and Undo. **Live on CT 106 11:23Z, Pi kiosk reloaded and checked on the panel** |
 | `55bb772` | 2026-11-06 | **Fire page in the hub's design** — `/fire` everyday view matches the staff hub's "On site now" (ring, cards, out staff dimmed, visitor badges); roll call card turns red / amber (drill) / green (all safe), SAFE / MISSING rows, offline queue and service worker unchanged; e2e step added. **Live on CT 106 11:01Z** |
@@ -309,7 +310,8 @@ On a Proxmox/Ubuntu VM, follow **"Install on Ubuntu, step by step"** below — i
 | `/visitor` | Visitor at the tablet | **Expected today — tap your name** (pre-registered visitors arrive with one tap: name, company, host already filled) or the full form: name, company, who they're visiting, vehicle reg, fire-notice tick box. Issues a daily badge number. |
 | `/fire` | Anyone's phone, any LAN device | Live "who is on site", **in the staff hub's design** (2026-11-06): count ring, "N people in the building", staff in as cards with initials, arrival time and how they signed in, staff out dimmed (office network only), visitor badges; updates the moment anyone taps. **START ROLL CALL** freezes the register at that instant and the card turns red; then SAFE / MISSING per person with the ticker's name and time; counts of safe / missing / not yet seen (the ring shows safe of total); the card turns **green "ALL n ACCOUNTED FOR"** the moment every person on the frozen register is marked SAFE; END writes a summary event. A chip says **Lone worker** when exactly one member of staff is on site with no visitors. If the server dies mid-fire the page shows the last register **that device** saw, clearly labelled — a fallback only, not relied on (see SharePoint). Print-friendly (prints who is in, black on white). |
 | `/admin` | Manager's PC | **Dashboard (2026-11-05)** in six tabs, keys 1–6: **Today** (on-site ring, staff/visitors/expected, system verdict, *Needs attention* — forgotten sign-outs, an unknown card to give with one click, lone worker, failing checks — who's in, live activity), **Staff** (search, add, sign in/out, card by USB reader or *Give card*, history timeline, I'm SAFE link), **Visitors** (on site, forgotten sign-outs, **pre-register expected visitors** for the next 14 days), **Log & roll calls** (filter by kind/text/date, CSV export, roll-call history), **Ask** (the register assistant + "who was in at…"), **System** (health tiles, company name, fire notice, device tokens, presence enrolment). Live over `/api/stream`. Works on a phone. Optional PIN. |
-| `/safe` | Staff phone (from the person's own "I'm SAFE" link issued in Admin; the Teams card's button opens the same page on a phone that has opened its link once) | One press marks **you** SAFE on the open roll call (`via: self`, bound to your personal key). Says plainly when the server cannot be reached. v4. |
+| `/safe` | Staff phone (from the person's own "I'm SAFE" link issued in Admin; the Teams card's button opens the same page on a phone that has opened its link once) | One press marks **you** SAFE on the open roll call (`via: self`, bound to your personal key). Says plainly when the server cannot be reached. v4. On Android it also offers **📱 Set up the eRIGHT Door app** (see "eRIGHT Door phone app"). |
+| `/app` | Staff Android phone, office Wi-Fi | Download page for the **eRIGHT Door** app (`/eright-door.apk`) with the 2-minute set-up. Office network only. |
 | `/tap` | Staff phone via NFC sticker | The original SigninApp's zero-hardware path: sticker URL → phone remembers who you are → each tap toggles you. |
 
 ## Run
@@ -377,6 +379,63 @@ metrics — against a fake webhook in `test/app.test.js`; and **against the real
 (END card posted by Flow bot into eRIGHT › General, `signin_teams_last_send_ok 1`). The message uses the
 `attachments[].contentType = application/vnd.microsoft.card.adaptive` shape that Workflows webhooks accept
 (the same family the estate's Alertmanager `msteamsv2` receiver posts).
+
+## eRIGHT Door phone app (Android) and Wi-Fi presence (2026-11-06)
+
+**Wi-Fi presence is LIVE on CT 106** (`PRESENCE=on`): the server polls the office UniFi console
+(`https://192.168.101.1`, site `default`) every 30 s with the read-only key in The Vault as `unifi:eright-office`
+(collection `network`; copied from Alan's personal item "SigninApp", which he can now delete). The console ships a
+self-signed certificate (CN `unifi.local`, no IP address, so ordinary verification can never pass): the server trusts
+**exactly** that certificate (`UNIFI_CA_FILE=/etc/eright-signin-unifi.pem`, SHA-256
+`E8:67:FD:7B:…:51:BF`, the same fingerprint seen from the admin PC and from CT 106), so the key is never sent to
+anything else (`lib/pinned.js`, tested). `UNIFI_SSID=eRIGHT-Corporate`: only wireless clients on that network are
+phones (the console also lists 39 wired devices). First live poll: ok, 58 clients. Enrolled so far: Alan Meade's
+S25 Ultra (hostname `Alan-s-S25-Ultra`). The other phones are picked in Admin → System → Presence (whose phone is
+whose is for Alan to say). Rules unchanged: a phone may sign someone **in**; with no key tags, Wi-Fi alone never signs
+anyone **out** (it shows "probably left").
+
+**The app** (`android/`, v1.0.3, 42 KB, Android 10+): plain Java against `android.jar`, built by `android/build.ps1`
+with the SDK's aapt2 + javac (`--release 8`) + d8 + zipalign + apksigner — no Gradle, no libraries, no downloads.
+Signed with The Vault's `android:eright-door-signing` (password; the PKCS12 keystore is attached to the same item and
+kept at `D:\eRIGHT\keys\eright-door.jks`, never in git). Build: `python …\vault.py run android:eright-door-signing --
+powershell -File android\build.ps1` (publishes `public/eright-door.apk`). Bump `android/version.txt` each release.
+
+- **Set-up:** Admin → Staff → **I'm SAFE link** (as before) → the person opens it on their Android phone on the office
+  Wi-Fi → **📱 Set up the eRIGHT Door app** (an `intent://` link: the key goes straight to the app, never to a server;
+  without the app it opens `/app`). The app checks the key with the register and keeps it in private storage
+  (`allowBackup=false`). Issuing a new I'm SAFE link stops the old phone at once.
+- **IN:** when the phone *arrives* on a network where the register answers — first keyless, and it must say the
+  company name saved at set-up, so a home router at the same address never receives the key — then
+  `POST /api/me/sign {direction:"in", reason:"wifi-joined"}` (source `phone`, idempotent). Only on arrival: a sign-out
+  at the door while still on the Wi-Fi is never undone, nor after a restart (15-minute continuity).
+- **OUT:** only when off the office network **and** more than 150 m from the office, after subtracting both fixes'
+  error margins. The phone learns the office location itself while on the office network (up to 10 fixes; GPS,
+  network and fused asked in parallel, the most accurate kept); **the location never leaves the phone**. Unsure, no fix,
+  office not learned yet, register unreachable = stay signed in (an over-count). Checks every 5 min; gives up after
+  4 h. **Off the office Wi-Fi the register is only reachable once go-live step 6 (`https://signin.eright.co.uk`) is
+  live** — until then the app cannot sign anyone out from 4G and says so; `/api/me` hands the app the https address
+  automatically once `PUBLIC_URL` is https. From outside, `/api/me/sign` accepts **out only** (Caddy allow-list
+  updated; the route table's public-route guard test now lists five routes).
+- **Roll call:** a live connection to `/api/stream`; on a change the app reads `/api/me` and, if this person is on
+  the frozen register, raises a full-screen alarm (alarm sound channel, over the lock screen) with **I'M SAFE**
+  (`/api/fire/mark` via self) and **Open the roll call** (the `/fire` page in the app). A 60 s back-up check and
+  retries mean a lost stream event can never delay it by more than a minute.
+- **Screen:** status, the four permissions with a **Fix** button each (notifications; location *Allow all the time*;
+  full-screen alarm; battery *Unrestricted*), Sign in / Sign out now, Open the roll call, **Test the alarm** (sends
+  nothing), remove set-up.
+
+**Tested on a real phone** (moto g13, Android 14, on eRIGHT-Corporate, against a throwaway copy of the register on
+the admin PC — never the live fire register): set-up from the I'm SAFE page's button; automatic IN on joining
+(`phone:moto g13 · joined the office network`); all four permissions through the Fix buttons; office location learned
+(GPS ±7 m); leaving the network 9 m from the office → **no** sign-out; a mock position 1.5 km away (shell test
+provider) → **OUT** (`phone left the office network and the office area`); back on the network → IN again; screen
+locked, DRILL started → **full-screen alarm 0.7 s later**; **I'M SAFE** from the alarm → marked SAFE (self).
+Found and fixed while testing: the moto's framework "fused" provider answers ±100 m indoors (1.0.1 asks all
+providers); a drill start's stream event once produced no alarm until the next change (1.0.3 adds the 60 s back-up,
+retries and stream logging; re-test: 0.7 s).
+**Not yet tested:** a real walk out of the building (only the mock position), restart after a reboot, a full day of
+Android battery management, Samsung One UI (the S25), 4G (needs step 6), iPhone (not supported: no app; iPhones keep
+the I'm SAFE page).
 
 ## Presence — belt and braces, so nobody has to remember to tap (v3.4–3.6)
 

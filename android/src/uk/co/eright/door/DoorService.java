@@ -24,6 +24,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
+import android.util.Log;
 
 import org.json.JSONObject;
 
@@ -46,6 +47,7 @@ import java.util.Set;
  *  - Roll call: live stream from the register; a full-screen alarm with "I'M SAFE" if this person is on its register.
  */
 public class DoorService extends Service {
+    static final String TAG = "eRIGHTDoor";   // decisions only: never the key, never coordinates
     static final String CH_WATCH = "watch", CH_ROLL = "rollcall", CH_INFO = "info";
     static final int N_WATCH = 1, N_ROLL = 2, N_INFO = 3;
     static final String ACTION_REFRESH = "uk.co.eright.door.REFRESH";
@@ -53,6 +55,7 @@ public class DoorService extends Service {
     static final long AWAY_FIRST_MS = 2 * 60_000L, AWAY_EVERY_MS = 5 * 60_000L, AWAY_GIVE_UP_MS = 4 * 3600_000L;
     static final long CONTINUOUS_MS = 15 * 60_000L;
     static final double RADIUS_M = 150;
+    static final long POLL_MS = 60_000L;   // back-up for the live stream: a roll call is never more than a minute late
 
     private HandlerThread thread;
     private Handler h;
@@ -97,6 +100,7 @@ public class DoorService extends Service {
         sse = new Thread(this::sseLoop, "door-sse");
         sse.start();
         h.postDelayed(tick, 4000);
+        h.postDelayed(poll, POLL_MS);
         if (!atOffice && awaySince > 0) h.postDelayed(awayCheck, 30_000);
     }
 
@@ -143,8 +147,10 @@ public class DoorService extends Service {
                 return;
             }
             Prefs.put(this, "problem", "");
+            Log.i(TAG, "probe: office register answered on " + n + ", arrived=" + !atOffice);
             onOffice(n, me);
         } catch (Exception e) {
+            Log.i(TAG, "probe: no office register on " + n + " (" + e.getClass().getSimpleName() + ")");
             if (n.equals(officeNet)) leftOffice();
         }
     }
@@ -170,6 +176,7 @@ public class DoorService extends Service {
                 pendingIn = false;
                 signedIn = r.optBoolean("signedIn");
                 since = r.isNull("since") ? "" : r.optString("since", "");
+                Log.i(TAG, "sign in (wifi-joined): changed=" + r.optBoolean("changed"));
                 if (r.optBoolean("changed")) info("✓ Signed IN at " + Api.hhmm(since), "You joined the office Wi-Fi. Have a good day!");
             } catch (Exception e) { /* tried again on the next probe while pendingIn */ }
         } else pendingIn = false;
@@ -187,6 +194,7 @@ public class DoorService extends Service {
         officeNet = null;
         pendingIn = false;
         awaySince = System.currentTimeMillis();
+        Log.i(TAG, "left the office network; signedIn=" + Prefs.getBool(this, "signedIn"));
         Prefs.putBool(this, "atOffice", false);
         Prefs.putLong(this, "awaySince", awaySince);
         updateWatch(Prefs.getBool(this, "signedIn") ? "Off the office Wi-Fi · checking distance" : "Away from the office");
@@ -219,6 +227,7 @@ public class DoorService extends Service {
         float[] d = new float[1];
         Location.distanceBetween(loc.getLatitude(), loc.getLongitude(), Prefs.officeLat(this), Prefs.officeLon(this), d);
         float sure = d[0] - loc.getAccuracy() - Prefs.officeAcc(this);
+        Log.i(TAG, "away check: " + Math.round(d[0]) + " m from office, fix " + loc.getProvider() + " ±" + Math.round(loc.getAccuracy()) + " m, sure=" + Math.round(sure) + " m (needs > " + Math.round(RADIUS_M) + ")");
         if (sure > RADIUS_M) { signOutAway(); return; }
         updateWatch("Off the office Wi-Fi · " + Math.round(d[0]) + " m from the office");
         h.postDelayed(awayCheck, AWAY_EVERY_MS);
@@ -230,6 +239,7 @@ public class DoorService extends Service {
         for (String base : bases()) {
             try {
                 JSONObject r = Api.call(base, "POST", "/api/me/sign", Prefs.key(this), body, null);
+                Log.i(TAG, "sign out (left-area) via " + base + ": changed=" + r.optBoolean("changed"));
                 awaySince = 0;
                 Prefs.putLong(this, "awaySince", 0);
                 Prefs.putBool(this, "signedIn", false);
@@ -259,42 +269,62 @@ public class DoorService extends Service {
     // ------------------------------------------------------------------ location (stays on the phone)
     interface Fix { void got(Location loc); }
 
+    /**
+     * Ask every usable provider at once (GPS, network, fused) and keep the most accurate fresh answer: phones differ a
+     * lot (a moto g13's framework "fused" provider answers ±100 m indoors while its GPS has ±10 m and network ±18 m).
+     */
     private void fix(final Fix done) {
         boolean fine = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
         boolean coarse = checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
         if (!fine && !coarse) { done.got(null); return; }
         final LocationManager lm = getSystemService(LocationManager.class);
-        String provider = null;
-        if (Build.VERSION.SDK_INT >= 31 && lm.hasProvider(LocationManager.FUSED_PROVIDER) && lm.isProviderEnabled(LocationManager.FUSED_PROVIDER)) provider = LocationManager.FUSED_PROVIDER;
-        else if (fine && lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) provider = LocationManager.GPS_PROVIDER;
-        else if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) provider = LocationManager.NETWORK_PROVIDER;
-        if (provider == null) { done.got(null); return; }
+        final ArrayList<String> providers = new ArrayList<>();
+        if (fine && lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) providers.add(LocationManager.GPS_PROVIDER);
+        if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) providers.add(LocationManager.NETWORK_PROVIDER);
+        if (Build.VERSION.SDK_INT >= 31 && lm.hasProvider(LocationManager.FUSED_PROVIDER) && lm.isProviderEnabled(LocationManager.FUSED_PROVIDER)) providers.add(LocationManager.FUSED_PROVIDER);
+        if (providers.isEmpty()) { done.got(null); return; }
+        final Location[] best = { null };
+        final int[] pending = { providers.size() };
         final boolean[] answered = { false };
-        final Fix once = loc -> { if (answered[0]) return; answered[0] = true; done.got(loc); };
-        h.postDelayed(() -> once.got(null), 45_000);
-        try {
-            if (Build.VERSION.SDK_INT >= 30) {
-                lm.getCurrentLocation(provider, null, h::post, loc -> once.got(loc));
-            } else {
-                lm.requestSingleUpdate(provider, new LocationListener() {
-                    @Override public void onLocationChanged(Location loc) { once.got(loc); }
-                    @Override public void onStatusChanged(String p, int s, Bundle b) { }
-                    @Override public void onProviderEnabled(String p) { }
-                    @Override public void onProviderDisabled(String p) { }
-                }, thread.getLooper());
+        final Runnable finish = () -> { if (answered[0]) return; answered[0] = true; done.got(best[0]); };
+        final Fix collect = loc -> {
+            long ageMs = loc == null ? Long.MAX_VALUE : (android.os.SystemClock.elapsedRealtimeNanos() - loc.getElapsedRealtimeNanos()) / 1_000_000L;
+            if (loc != null && ageMs < 120_000 && (best[0] == null || loc.getAccuracy() < best[0].getAccuracy())) best[0] = loc;
+            if (--pending[0] <= 0) finish.run();
+        };
+        h.postDelayed(finish, 40_000);
+        for (final String provider : providers) {
+            try {
+                if (Build.VERSION.SDK_INT >= 30) {
+                    lm.getCurrentLocation(provider, null, h::post, collect::got);
+                } else {
+                    lm.requestSingleUpdate(provider, new LocationListener() {
+                        @Override public void onLocationChanged(Location loc) { collect.got(loc); }
+                        @Override public void onStatusChanged(String p, int s, Bundle b) { }
+                        @Override public void onProviderEnabled(String p) { }
+                        @Override public void onProviderDisabled(String p) { collect.got(null); }
+                    }, thread.getLooper());
+                }
+            } catch (SecurityException e) {
+                collect.got(null);
             }
-        } catch (SecurityException e) {
-            once.got(null);
         }
     }
 
     private void learnOffice() {
         if (Prefs.officeN(this) >= 10) return;
-        fix(loc -> { if (loc != null && atOffice && loc.getAccuracy() <= 75) Prefs.addOfficeFix(this, loc.getLatitude(), loc.getLongitude(), loc.getAccuracy()); });
+        fix(loc -> { Log.i(TAG, "learn office: " + (loc == null ? "no fix" : loc.getProvider() + " ±" + Math.round(loc.getAccuracy()) + " m") + ", have " + Prefs.officeN(this)); if (loc != null && atOffice && loc.getAccuracy() <= 75) Prefs.addOfficeFix(this, loc.getLatitude(), loc.getLongitude(), loc.getAccuracy()); });
     }
 
     // ------------------------------------------------------------------ roll call
-    private void refreshNow() {
+    private final Runnable poll = new Runnable() {
+        @Override public void run() { refreshNow(0); h.postDelayed(this, POLL_MS); }
+    };
+
+    private void refreshNow() { refreshNow(0); }
+
+    /** Ask the register for this person's state; on failure try again after 2 s and 5 s. */
+    private void refreshNow(final int attempt) {
         Network net = atOffice ? officeNet : null;
         for (String base : atOffice ? java.util.Collections.singletonList(Prefs.server(this)) : bases()) {
             try {
@@ -309,8 +339,11 @@ public class DoorService extends Service {
                 }
                 handleRollcall(me);
                 return;
-            } catch (Exception ignored) { }
+            } catch (Exception e) {
+                Log.i(TAG, "refresh failed (attempt " + (attempt + 1) + "): " + e.getClass().getSimpleName());
+            }
         }
+        if (attempt < 2) h.postDelayed(() -> refreshNow(attempt + 1), attempt == 0 ? 2000 : 5000);
     }
 
     private void handleRollcall(JSONObject me) {
@@ -332,6 +365,7 @@ public class DoorService extends Service {
         if ("safe".equals(mark)) { notifySafe(this, drill); return; }
         if (id.equals(Prefs.get(this, "rcAlerted"))) return;
         Prefs.put(this, "rcAlerted", id);
+        Log.i(TAG, "roll call " + id + " onRegister=" + onRegister + " drill=" + drill);
         if (onRegister) alarm(this, drill, rc.optString("startedAt"), false);
         else {
             Notification.Builder b = new Notification.Builder(this, CH_ROLL)
@@ -412,13 +446,15 @@ public class DoorService extends Service {
                 sseConn = c;
                 sseBase = base;
                 BufferedReader r = new BufferedReader(new InputStreamReader(c.getInputStream(), "UTF-8"));
+                Log.i(TAG, "stream: connected to " + base + (net != null ? " on " + net : ""));
                 h.post(refreshRun);
                 backoff = 3000;
                 String line;
                 while (running && (line = r.readLine()) != null) {
-                    if (line.startsWith("event: change")) { h.removeCallbacks(refreshRun); h.postDelayed(refreshRun, 250); }
+                    if (line.startsWith("event: change")) { Log.i(TAG, "stream: change"); h.removeCallbacks(refreshRun); h.postDelayed(refreshRun, 250); }
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                Log.i(TAG, "stream: closed (" + e.getClass().getSimpleName() + ")");
             } finally {
                 HttpURLConnection c = sseConn;
                 if (c != null) c.disconnect();
