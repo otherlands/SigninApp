@@ -309,8 +309,8 @@ test('public boundary: X-Public requests reach only the roll-call read path and 
     try {
         const ann = app.store.addPerson('Ann'); const bob = app.store.addPerson('Bob');
         await call('POST', '/api/sign', { personId: ann.id }); await call('POST', '/api/sign', { personId: bob.id });
-        // the route table marks exactly four API routes public
-        assert.deepEqual(app.router.table().filter(r => r.public).map(r => `${r.method} ${r.path}`).sort(), ['GET /api/fire', 'GET /api/me', 'GET /api/stream', 'POST /api/fire/mark']);
+        // the route table marks exactly five API routes public (v4.2: the phone app's key-bound sign, OUT only from outside)
+        assert.deepEqual(app.router.table().filter(r => r.public).map(r => `${r.method} ${r.path}`).sort(), ['GET /api/fire', 'GET /api/me', 'GET /api/stream', 'POST /api/fire/mark', 'POST /api/me/sign']);
         // from the internet: pages and assets allowed, everything else 403 — even with the admin PIN
         for (const p of ['/fire', '/rollcall', '/safe', '/fire.js', '/shared.js', '/style.css', '/favicon.svg', '/sw.js', '/fire.webmanifest']) assert.equal((await call('GET', p, undefined, P)).status, 200, p);
         for (const p of ['/', '/admin', '/tap', '/visitor', '/kiosk.js', '/admin.js', '/manifest.webmanifest', '/api/state', '/api/roster', '/api/health', '/api/people', '/api/events', '/api/export', '/metrics', '/api/routes']) assert.equal((await call('GET', p, undefined, { ...P, ...A })).status, 403, p);

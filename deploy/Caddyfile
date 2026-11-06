@@ -65,10 +65,11 @@ signin.eright.co.uk {
         method GET
         path /fire /rollcall /safe /fire.js /shared.js /style.css /favicon.svg /sw.js /fire.webmanifest /api/fire /api/me /api/stream
     }
-    # The one write: a person marking THEMSELVES safe (the app insists on via:self + a valid personal key)
+    # The writes: a person marking THEMSELVES safe, and the eRIGHT Door phone app signing its owner OUT (the app
+    # insists on a valid personal key; from outside /api/me/sign refuses "in")
     @public_post {
         method POST
-        path /api/fire/mark
+        path /api/fire/mark /api/me/sign
     }
     handle @public_get {
         reverse_proxy 127.0.0.1:3000 {

@@ -13,7 +13,7 @@ startClock($('#clock'));
 const SRC = {
     kiosk: 'door screen', card: 'card', desktop: 'PC', admin: 'admin', esp32: 'back-door reader', 'fire-page': 'fire page',
     self: 'own phone', list: 'Microsoft List', wifi: 'Wi-Fi', ble: 'key tag', 'ble+wifi': 'Wi-Fi + tag', 'stale-close': 'closed by admin',
-    visitor: 'visitor screen', webhook: 'wall button', tap: 'phone tap'
+    visitor: 'visitor screen', webhook: 'wall button', tap: 'phone tap', phone: 'phone app'
 };
 const srcLabel = (s) => SRC[s] || s || '';
 const hue = (name) => { let h = 0; for (const c of String(name)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };

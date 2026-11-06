@@ -15,8 +15,8 @@ function marksFor(rc) {
 }
 
 // ---- the everyday "who is on site" look (same design as the staff hub's "On site now") ----
-const SRC = { kiosk: '👆', card: '💳', desktop: '🖥', admin: '⚙', esp32: '💳', 'fire-page': '🔥', self: '📱', list: '📋', wifi: '📶', ble: '🔑', 'ble+wifi': '📶', webhook: '🔘', tap: '📱', visitor: '👆' };
-const SRC_NAME = { kiosk: 'the door screen', card: 'a card', desktop: 'their PC', admin: 'admin', esp32: 'the back-door reader', self: 'their phone', list: 'the Microsoft List', wifi: 'Wi-Fi', ble: 'key tag', 'ble+wifi': 'Wi-Fi + key tag', webhook: 'a wall button', tap: 'a phone tap' };
+const SRC = { kiosk: '👆', card: '💳', desktop: '🖥', admin: '⚙', esp32: '💳', 'fire-page': '🔥', self: '📱', list: '📋', wifi: '📶', ble: '🔑', 'ble+wifi': '📶', webhook: '🔘', tap: '📱', visitor: '👆', phone: '📱' };
+const SRC_NAME = { kiosk: 'the door screen', card: 'a card', desktop: 'their PC', admin: 'admin', esp32: 'the back-door reader', self: 'their phone', list: 'the Microsoft List', wifi: 'Wi-Fi', ble: 'key tag', 'ble+wifi': 'Wi-Fi + key tag', webhook: 'a wall button', tap: 'a phone tap', phone: 'the phone app' };
 const hue = (name) => { let h = 0; for (const c of String(name)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 const initials = (name) => { const p = String(name).trim().split(/\s+/); return ((p[0] || '')[0] || '').toUpperCase() + (p.length > 1 ? (p[p.length - 1][0] || '').toUpperCase() : ''); };
 const ago = (iso) => {
