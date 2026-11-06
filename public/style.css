@@ -1183,3 +1183,89 @@ body.kiosk .banner { padding: 12px 18px; margin-bottom: 12px; }
     .k-lbl #search { width: 100%; margin: 0; } .k-hint { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .k-welcome, .k-welcome-card { animation: none; } .k-welcome-bar i { transition: none !important; } }
+
+/* ---------- kiosk: birthday party (2026-11-06) ----------
+   Ticked in Admin for today only. Decoration never takes a tap (pointer-events: none) and the server-side
+   roll call hides it at once (kiosk.js renders nothing while a roll call is open). */
+.k-party { position: fixed; inset: 0; z-index: 60; pointer-events: none; overflow: hidden; }
+.k-bday { position: relative; display: flex; align-items: center; gap: 16px; padding: 10px 22px; margin-bottom: 12px; border-radius: 20px; overflow: hidden;
+          border: 1px solid rgba(255, 204, 51, .6); box-shadow: 0 10px 40px rgba(255, 95, 143, .35);
+          background: linear-gradient(100deg, rgba(255, 95, 143, .35), rgba(124, 92, 255, .35), rgba(0, 212, 255, .3), rgba(255, 204, 51, .35)); background-size: 300% 100%;
+          animation: k-shift 8s ease-in-out infinite alternate; }
+.k-bday::after { content: ''; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .25) 50%, transparent 70%);
+                 transform: translateX(-100%); animation: k-shine 3.5s ease-in-out infinite; }
+.k-bday b { display: block; font-size: 1.7rem; font-weight: 900; letter-spacing: .01em; color: #fff; text-shadow: 0 2px 14px rgba(255, 95, 143, .6); }
+.k-bday small { display: block; font-size: .9rem; color: rgba(255, 255, 255, .85); }
+.k-bday-ic { font-size: 2.4rem; animation: k-bob 1.6s ease-in-out infinite; } .k-bday-ic.r { margin-left: auto; animation-delay: .5s; }
+@keyframes k-shift { to { background-position: 100% 0; } }
+@keyframes k-shine { 60%, 100% { transform: translateX(100%); } }
+@keyframes k-bob { 50% { transform: translateY(-6px) rotate(-6deg); } }
+
+/* bunting */
+.k-bunting { position: absolute; top: -4px; left: -2%; right: -2%; height: 40px; display: flex; justify-content: space-between;
+             border-top: 2px solid rgba(255, 255, 255, .35); border-radius: 0 0 50% 50% / 0 0 30px 30px; }
+.k-bunting i { width: 3.2%; height: 30px; background: var(--c); clip-path: polygon(0 0, 100% 0, 50% 100%); transform-origin: 50% 0;
+               transform: translateY(calc((13 - (var(--i) - 12.5) * (var(--i) - 12.5) / 13) * 1px));
+               animation: k-flag 2.6s ease-in-out calc(var(--i) * -.17s) infinite; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .35)); }
+@keyframes k-flag { 50% { rotate: 7deg; } }
+
+/* balloons float up, swaying */
+.k-balloon { position: absolute; left: var(--x); bottom: -190px; width: 62px; height: 76px; border-radius: 50% 50% 47% 53% / 56% 56% 44% 44%;
+             background: radial-gradient(circle at 32% 26%, rgba(255, 255, 255, .8), rgba(255, 255, 255, 0) 20%),
+                         radial-gradient(circle at 50% 55%, var(--c), color-mix(in srgb, var(--c) 55%, #000) 100%);
+             box-shadow: inset -6px -8px 16px rgba(0, 0, 0, .25), 0 8px 24px rgba(0, 0, 0, .25); opacity: .92;
+             animation: k-rise var(--d) linear var(--dl) infinite; will-change: transform; }
+.k-balloon::after { content: ''; position: absolute; left: 50%; bottom: -7px; width: 10px; height: 9px; translate: -50% 0; background: color-mix(in srgb, var(--c) 70%, #000); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.k-balloon b { position: absolute; left: 50%; top: 100%; width: 2px; height: 110px; margin-top: 6px; background: linear-gradient(rgba(255, 255, 255, .55), rgba(255, 255, 255, 0));
+               transform-origin: top; animation: k-string 2.2s ease-in-out infinite alternate; }
+@keyframes k-rise {
+    0% { transform: translate(0, 0) rotate(-5deg) scale(var(--s)); }
+    25% { transform: translate(var(--sw), -30vh) rotate(5deg) scale(var(--s)); }
+    50% { transform: translate(0, -60vh) rotate(-4deg) scale(var(--s)); }
+    75% { transform: translate(calc(var(--sw) * -1), -90vh) rotate(4deg) scale(var(--s)); }
+    100% { transform: translate(0, -125vh) rotate(-3deg) scale(var(--s)); }
+}
+@keyframes k-string { to { rotate: 8deg; } }
+
+/* curly ribbons drift down */
+.k-ribbon { position: absolute; left: var(--x); top: -160px; width: 22px; height: 130px; fill: none; stroke: currentColor; stroke-width: 4; stroke-linecap: round;
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .3)); animation: k-drift var(--d) linear var(--dl) infinite; will-change: transform; }
+@keyframes k-drift {
+    0% { transform: translate(0, 0) rotate(-20deg); }
+    50% { transform: translate(var(--sw), 60vh) rotate(25deg); }
+    100% { transform: translate(0, 125vh) rotate(-15deg); }
+}
+
+/* confetti flutters down */
+.k-confetti { position: absolute; left: var(--x); top: -24px; width: 10px; height: 16px; border-radius: 2px; background: var(--c);
+              animation: k-fall var(--d) linear var(--dl) infinite; will-change: transform; }
+.k-confetti:nth-child(3n) { width: 8px; height: 8px; border-radius: 50%; }
+.k-confetti:nth-child(4n) { width: 14px; height: 6px; }
+@keyframes k-fall { to { transform: translate3d(var(--sw), 110vh, 0) rotateZ(var(--r)) rotateY(720deg); } }
+
+/* the birthday person's tile */
+body.kiosk .person.bday { border-color: rgba(255, 204, 51, .85); box-shadow: 0 0 0 2px rgba(255, 204, 51, .25), 0 0 30px rgba(255, 95, 143, .35); }
+body.kiosk .person.bday:not(.in) { background: linear-gradient(135deg, rgba(255, 95, 143, .22), rgba(124, 92, 255, .2)); }
+body.kiosk .person.bday .k-av { filter: none; }
+body.kiosk .person.bday .k-who span { color: #ffe08a; font-weight: 700; }
+.k-hat { position: absolute; top: -20px; left: -10px; font-size: 1.8rem; transform: rotate(-18deg); filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .4)); animation: k-bob 1.8s ease-in-out infinite; }
+
+/* the birthday welcome */
+.k-welcome.bday .k-welcome-card { border-color: rgba(255, 204, 51, .8);
+    background: linear-gradient(160deg, rgba(255, 95, 143, .45), rgba(124, 92, 255, .4) 50%, rgba(18, 16, 44, .96));
+    box-shadow: 0 30px 90px rgba(0, 0, 0, .55), 0 0 80px rgba(255, 95, 143, .45); }
+.k-welcome.bday .k-welcome-hi { font-size: 2.9rem; }
+.k-welcome.bday .k-welcome-hi .e { display: inline-block; animation: k-bob 1.4s ease-in-out infinite; }
+.k-welcome.bday .k-welcome-hi .g { background: linear-gradient(90deg, #ffe08a, #ff9ec4, #a9f0ff, #ffe08a); background-size: 200% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent; animation: k-shift 3s linear infinite alternate; }
+.k-welcome.bday .k-welcome-what { color: #fff2c4; }
+.k-burst { position: absolute; left: 50%; top: 42%; width: 0; height: 0; pointer-events: none; }
+.k-burst i { position: absolute; width: 11px; height: 15px; border-radius: 2px; background: var(--c); opacity: 0;
+             animation: k-pop-out 2.2s cubic-bezier(.15, .7, .3, 1) var(--dl) forwards; }
+.k-burst i:nth-child(3n) { border-radius: 50%; width: 9px; height: 9px; }
+@keyframes k-pop-out {
+    0% { opacity: 1; transform: translate(0, 0) rotate(0) scale(.6); }
+    70% { opacity: 1; }
+    100% { opacity: 0; transform: translate(var(--tx), calc(var(--ty) + 260px)) rotate(var(--r)) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) { .k-bday, .k-bday::after, .k-bday-ic, .k-bunting i, .k-hat { animation: none !important; } }

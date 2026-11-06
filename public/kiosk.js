@@ -12,6 +12,51 @@ function tickClock() {
 }
 tickClock(); setInterval(tickClock, 1000);
 
+// ---- birthdays: ticked in Admin for today only. Pure decoration: pointer-events off, and gone during a roll call ----
+const PARTY_COLOURS = ['#ff5f8f', '#ffcc33', '#00d4ff', '#7c5cff', '#2ecc71', '#ff8a3d', '#ff4fd8', '#5ce1e6'];
+let partyKey = '';
+const bdayIds = () => new Set(state && !state.rollcall ? (state.birthdays || []).map(b => b.id) : []);
+const rnd = (a, b) => a + Math.random() * (b - a);
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const joinNames = (n) => n.length <= 1 ? (n[0] || '') : `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}`;
+function renderParty(data) {
+    const list = data.rollcall ? [] : (data.birthdays || []);
+    const key = list.map(b => b.id).join(',');
+    document.body.classList.toggle('bday', list.length > 0);
+    $('#bday').classList.toggle('hidden', !list.length);
+    if (!list.length) { $('#party').replaceChildren(); partyKey = ''; return; }
+    $('#bdayText').textContent = `Happy Birthday, ${joinNames(list.map(b => firstName(b.name)))}!`;
+    $('#bdayFrom').textContent = `from everyone at ${data.companyName} 🎉`;
+    if (key === partyKey) return;
+    partyKey = key;
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const bits = [];
+    // bunting across the top
+    const flags = Array.from({ length: 26 }, (_, i) => `<i style="--c:${PARTY_COLOURS[i % PARTY_COLOURS.length]};--i:${i}"></i>`).join('');
+    bits.push(`<div class="k-bunting">${flags}</div>`);
+    if (!reduce) {
+        for (let i = 0; i < 14; i++) {
+            bits.push(`<i class="k-balloon" style="--x:${rnd(2, 94).toFixed(1)}%;--d:${rnd(13, 22).toFixed(1)}s;--dl:-${rnd(0, 20).toFixed(1)}s;--c:${pick(PARTY_COLOURS)};--s:${rnd(.75, 1.25).toFixed(2)};--sw:${rnd(18, 46).toFixed(0)}px"><b></b></i>`);
+        }
+        for (let i = 0; i < 9; i++) {
+            bits.push(`<svg class="k-ribbon" viewBox="0 0 24 140" style="--x:${rnd(2, 96).toFixed(1)}%;--d:${rnd(9, 15).toFixed(1)}s;--dl:-${rnd(0, 14).toFixed(1)}s;--sw:${rnd(30, 80).toFixed(0)}px;color:${pick(PARTY_COLOURS)}"><path d="M12 2 C 24 14, 0 24, 12 36 S 0 58, 12 70 S 24 92, 12 104 S 0 126, 12 138" /></svg>`);
+        }
+        for (let i = 0; i < 40; i++) {
+            bits.push(`<i class="k-confetti" style="--x:${rnd(0, 100).toFixed(1)}%;--d:${rnd(6, 12).toFixed(1)}s;--dl:-${rnd(0, 12).toFixed(1)}s;--c:${pick(PARTY_COLOURS)};--sw:${rnd(-60, 60).toFixed(0)}px;--r:${rnd(360, 1080).toFixed(0)}deg"></i>`);
+        }
+    }
+    $('#party').innerHTML = bits.join('');
+}
+function burst() {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const el = $('#wBurst');
+    el.innerHTML = Array.from({ length: 90 }, () => {
+        const a = rnd(0, Math.PI * 2), d = rnd(180, 560);
+        return `<i style="--tx:${(Math.cos(a) * d).toFixed(0)}px;--ty:${(Math.sin(a) * d - 120).toFixed(0)}px;--c:${pick(PARTY_COLOURS)};--r:${rnd(180, 900).toFixed(0)}deg;--dl:${rnd(0, .25).toFixed(2)}s"></i>`;
+    }).join('');
+    setTimeout(() => { el.innerHTML = ''; }, 2600);
+}
+
 function render(data) {
     state = data;
     document.title = `Sign in · ${data.companyName}`;
@@ -26,21 +71,23 @@ function render(data) {
     $('#expectedBanner').classList.toggle('hidden', !data.expectedToday);
     if (data.expectedToday) $('#expectedText').textContent = `${data.expectedToday} visitor${data.expectedToday === 1 ? '' : 's'} expected today`;
     $('#live').className = 'live';
+    const bdays = bdayIds();
 
     peopleEl.replaceChildren(...data.people.map(person => {
         const b = document.createElement('button');
-        b.className = `person ${person.signedIn ? 'in' : ''} ${person.stale ? 'stale' : ''}`;
+        b.className = `person ${person.signedIn ? 'in' : ''} ${person.stale ? 'stale' : ''} ${bdays.has(person.id) ? 'bday' : ''}`;
         const sub = person.signedIn
             ? (person.stale ? `⚠ In ${sinceLabel(person.since)} — tap to sign out` : `In ${sinceLabel(person.since)}`)
             : 'Tap to sign in';
         const pres = person.signedIn && person.presence ? (person.presence.state === 'here' ? '<span class="badge" title="phone or key tag seen inside">📱</span>' : person.presence.state === 'probably-left' ? `<span class="badge" title="phone and key tag absent">📵 ${SI.fmtTime(person.presence.lastSeen)}</span>` : '') : '';
-        b.innerHTML = `<span class="k-av" style="--h:${hue(person.name)}">${esc(initials(person.name))}</span>
-            <span class="k-who"><strong>${esc(person.name)}</strong><span>${esc(sub)}</span></span>${pres || (person.hasCard ? '<span class="badge" title="has a card">💳</span>' : '')}`;
+        b.innerHTML = `<span class="k-av" style="--h:${hue(person.name)}">${esc(initials(person.name))}${bdays.has(person.id) ? '<span class="k-hat">🥳</span>' : ''}</span>
+            <span class="k-who"><strong>${esc(person.name)}</strong><span>${esc(bdays.has(person.id) && !person.signedIn ? '🎂 Happy Birthday! Tap to sign in' : sub)}</span></span>${pres || (person.hasCard ? '<span class="badge" title="has a card">💳</span>' : '')}`;
         b.onclick = () => sign({ personId: person.id }, person.name);
         b.dataset.name = person.name.toLowerCase();
         return b;
     }));
     applyFilter();
+    renderParty(data);
 
     $('#visitorSub').textContent = data.visitors.length ? `${data.visitors.length} signed in` : '';
     if (!data.visitors.length) {
@@ -70,17 +117,21 @@ function greeting(kind) {
 function welcome(event, how) {
     const w = $('#welcome');
     const isIn = event.kind === 'in';
-    w.className = `k-welcome ${isIn ? 'in' : 'out'}`;
+    const party = event.subjectType !== 'visitor' && bdayIds().has(event.subjectId);
+    w.className = `k-welcome ${isIn ? 'in' : 'out'}${party ? ' bday' : ''}`;
     $('#wAv').style.setProperty('--h', hue(event.subjectName));
     $('#wAv').textContent = initials(event.subjectName);
-    $('#wHi').textContent = `${greeting(event.kind)}, ${firstName(event.subjectName)}`;
-    $('#wWhat').textContent = `${isIn ? '✓ Signed IN' : '✓ Signed OUT'} at ${SI.fmtTime(event.at)}${how ? ' · ' + how : ''}`;
+    if (party) $('#wHi').innerHTML = `<span class="e">🎉</span> <span class="g">Happy Birthday, ${esc(firstName(event.subjectName))}!</span> <span class="e">🎂</span>`;
+    else $('#wHi').textContent = `${greeting(event.kind)}, ${firstName(event.subjectName)}`;
+    $('#wWhat').textContent = `${isIn ? '✓ Signed IN' : '✓ Signed OUT'} at ${SI.fmtTime(event.at)}${how ? ' · ' + how : ''}${party ? (isIn ? ' — have a brilliant day!' : ' — enjoy the rest of your birthday!') : ''}`;
+    const ms = party ? 8000 : 5000;
     const undo = undoFor(event);
     $('#wUndo').onclick = (e) => { e.stopPropagation(); closeWelcome(); undo.run(); };
     $('#wDone').onclick = (e) => { e.stopPropagation(); closeWelcome(); };
     const bar = $('#wBar'); bar.style.transition = 'none'; bar.style.width = '100%';
-    requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.transition = 'width 5s linear'; bar.style.width = '0%'; }));
-    clearTimeout(welcomeT); welcomeT = setTimeout(closeWelcome, 5000);
+    requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.transition = `width ${ms / 1000}s linear`; bar.style.width = '0%'; }));
+    clearTimeout(welcomeT); welcomeT = setTimeout(closeWelcome, ms);
+    if (party) burst();
     if (search && document.activeElement === search) search.blur();
 }
 function closeWelcome() { clearTimeout(welcomeT); $('#welcome').classList.add('hidden'); }

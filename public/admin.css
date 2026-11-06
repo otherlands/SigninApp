@@ -313,3 +313,21 @@ a.kpi:hover { transform: translateY(-2px); border-color: var(--accent2); }
 
 .ic-sq { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-size: 16px; background: rgba(0, 212, 255, .12); flex: 0 0 auto; }
 .ic-sq.off { opacity: .45; filter: grayscale(1); }
+
+/* birthday tick (door-screen celebration, today only) */
+.bday-tick { display: inline-flex !important; align-items: center; gap: 6px; margin: 0 0 0 auto !important; font-size: 11.5px !important; color: var(--muted) !important;
+             padding: 2px 10px 2px 6px; border-radius: 99px; border: 1px dashed rgba(255, 204, 51, .35); cursor: pointer; user-select: none; }
+.bday-tick input { width: 15px !important; height: 15px; min-height: 0 !important; margin: 0; padding: 0; accent-color: #ffcc33; cursor: pointer; }
+.bday-tick:has(input:checked) { color: #ffe08a !important; border-style: solid; border-color: rgba(255, 204, 51, .7); background: rgba(255, 204, 51, .12); }
+.pcard.is-bday { border-color: rgba(255, 204, 51, .6); box-shadow: 0 0 24px rgba(255, 95, 143, .2); }
+
+.bday-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.bday-row select { width: auto !important; min-height: 32px !important; padding: 3px 8px !important; font-size: 12.5px !important; margin: 0 !important; border-radius: 8px; }
+.bday-row .bd-saved { color: #ffe08a; } .bday-row .bd-saved.muted { color: var(--muted); }
+.bday-row .bd-clear { min-height: 28px; padding: 2px 8px; font-size: 11px; }
+.bday-next { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 14px; border-radius: 14px;
+             border: 1px solid rgba(255, 204, 51, .35); background: linear-gradient(90deg, rgba(255, 95, 143, .12), rgba(124, 92, 255, .08)); font-size: 13px; }
+.bday-next .bn-h { font-weight: 800; color: #ffe08a; margin-right: 4px; }
+.bday-next .bn { padding: 3px 10px; border-radius: 99px; border: 1px solid var(--border); background: rgba(10, 13, 26, .45); }
+.bday-next .bn.now { border-color: rgba(255, 204, 51, .7); background: rgba(255, 204, 51, .15); color: #fff; }
+.bday-next .bn-x { margin-left: auto; color: var(--muted); font-size: 12px; }

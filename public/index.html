@@ -49,6 +49,12 @@
         <a class="go" href="/visitor">Visitor sign in →</a>
     </div>
 
+    <div id="bday" class="k-bday hidden" aria-live="polite">
+        <span class="k-bday-ic">🎂</span>
+        <div><b id="bdayText"></b><small id="bdayFrom"></small></div>
+        <span class="k-bday-ic r">🎈</span>
+    </div>
+
     <section class="k-panel">
         <div class="k-lbl"><h2>Staff</h2><span class="k-sub">tap your name to sign in or out</span>
             <input id="search" type="search" placeholder="🔍 Find your name" autocomplete="off" aria-label="Find your name">
@@ -76,6 +82,8 @@
         <a class="k-admin" href="/admin">Admin</a>
     </nav>
 
+    <div id="party" class="k-party" aria-hidden="true"></div>
+
     <div id="welcome" class="k-welcome hidden" role="status" aria-live="assertive">
         <div class="k-welcome-card">
             <div class="k-welcome-av" id="wAv"></div>
@@ -84,6 +92,7 @@
             <div class="k-welcome-act"><button id="wUndo" class="ghost">Not me — undo</button><button id="wDone" class="primary">Done</button></div>
             <div class="k-welcome-bar"><i id="wBar"></i></div>
         </div>
+        <div class="k-burst" id="wBurst"></div>
     </div>
 
     <script src="/shared.js"></script>

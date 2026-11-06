@@ -118,7 +118,7 @@ function renderToday(d, prev) {
     const fresh = (id) => (prev && !was.has(id) ? ' arrive' : '');
     $('#whoGrid').innerHTML = [
         ...inStaff.map(p => `<div class="who${p.stale ? ' stale' : ''}${fresh(p.id)}" title="${esc(p.name)} — signed in ${esc(fmtWhen(p.since))} by ${esc(srcLabel(p.lastSource))}">${avatar(p.name, p.stale ? 'in stale' : 'in')}
-            <div style="min-width:0"><div class="nm">${esc(p.name)}</div><div class="tm">${p.stale ? '⚠ since ' + esc(fmtWhen(p.since)) : 'in ' + esc(fmtTime(p.since)) + ' · ' + ago(p.since)} · ${esc(srcLabel(p.lastSource))}</div></div></div>`),
+            <div style="min-width:0"><div class="nm">${esc(p.name)}${(d.birthdays || []).some(b => b.id === p.id) ? ' 🎂' : ''}</div><div class="tm">${p.stale ? '⚠ since ' + esc(fmtWhen(p.since)) : 'in ' + esc(fmtTime(p.since)) + ' · ' + ago(p.since)} · ${esc(srcLabel(p.lastSource))}</div></div></div>`),
         ...vis.map(v => `<div class="who visitor${fresh('v' + v.id)}" title="Visitor badge ${esc(v.badge)}"><div class="av">${esc(v.badge)}</div>
             <div style="min-width:0"><div class="nm">${esc(v.name)}</div><div class="tm">visitor${v.company ? ' · ' + esc(v.company) : ''}${v.hostName ? ' · for ' + esc(v.hostName) : ''} · in ${esc(fmtTime(v.signedInAt))}</div></div></div>`)
     ].join('') || '<div class="empty">Nobody is signed in right now.</div>';
@@ -165,13 +165,40 @@ function renderAttention() {
 
 // ---------------------------------------------------------------- STAFF
 const openTimelines = new Map();   // personId -> html, so a live refresh keeps an open History open
+let staffBirthdays = {};           // personId -> "MM-DD" (admin only; the kiosk never sees this list)
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const bdayLabel = (mmdd) => `${Number(mmdd.slice(3))} ${MONTHS[Number(mmdd.slice(0, 2)) - 1]}`;
+function daysUntil(mmdd) {
+    const now = new Date(); const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    for (const y of [now.getFullYear(), now.getFullYear() + 1]) {
+        let m = Number(mmdd.slice(0, 2)) - 1, dd = Number(mmdd.slice(3));
+        if (m === 1 && dd === 29 && new Date(y, 1, 29).getMonth() !== 1) dd = 28;
+        const t = new Date(y, m, dd);
+        if (t >= today) return Math.round((t - today) / 86400000);
+    }
+    return 999;
+}
+function renderBdayNext(d) {
+    const el = $('#bdayNext');
+    const today = new Set((d.birthdays || []).map(b => b.id));
+    const rows = d.people.filter(p => staffBirthdays[p.id] || today.has(p.id))
+        .map(p => ({ p, n: today.has(p.id) ? 0 : daysUntil(staffBirthdays[p.id]), when: staffBirthdays[p.id] ? bdayLabel(staffBirthdays[p.id]) : 'today' }))
+        .sort((a, b) => a.n - b.n).slice(0, 6);
+    el.classList.toggle('hidden', !rows.length);
+    el.innerHTML = `<span class="bn-h">🎂 Coming up</span>` + rows.map(r => `<span class="bn${r.n === 0 ? ' now' : ''}"><b>${esc(r.p.name.split(' ')[0])}</b> ${r.n === 0 ? 'today 🎉' : `${esc(r.when)} · ${r.n === 1 ? 'tomorrow' : 'in ' + r.n + ' days'}`}</span>`).join('')
+        + `<span class="bn-x">${Object.keys(staffBirthdays).length} of ${d.people.length} birthdays saved</span>`;
+}
+async function loadBirthdays() {
+    try { staffBirthdays = await api('GET', '/api/birthdays'); if (state) renderStaff(state); } catch { }
+}
 function renderStaff(d) {
     const list = $('#peopleList');
-    // Never rebuild under someone typing a card number; catch up when they leave the box.
-    if (list.contains(document.activeElement) && document.activeElement.matches('input')) { list.dataset.pending = '1'; return; }
+    // Never rebuild under someone typing a card number or choosing a birthday; catch up when they leave the box.
+    if (list.contains(document.activeElement) && document.activeElement.matches('input, select')) { list.dataset.pending = '1'; return; }
     delete list.dataset.pending;
     list.replaceChildren(...d.people.map(p => personCard(p, d)));
     applyStaffFilter();
+    renderBdayNext(d);
     $('#cardHint').classList.toggle('hidden', !d.lastUnknownCard);
     $('#lastCard').textContent = d.lastUnknownCard ? `${d.lastUnknownCard.uid} · ${fmtWhen(d.lastUnknownCard.at)}${d.lastUnknownCard.device ? ' · ' + d.lastUnknownCard.device : ''}` : 'none';
 }
@@ -194,10 +221,20 @@ function personCard(p, d) {
             : p.presence.state === 'probably-left' ? `<span class="cred left">📵 probably left ${esc(fmtTime(p.presence.lastSeen))}</span>` : '<span class="cred">no signal yet</span>')
         : '';
     const card = d.lastUnknownCard;
+    const bday = (d.birthdays || []).some(b => b.id === p.id);
+    const saved = staffBirthdays[p.id] || '';
+    el.classList.toggle('is-bday', bday);
     el.innerHTML = `<div class="p-head">${avatar(p.name, 'lg ' + (p.signedIn ? (p.stale ? 'in stale' : 'in') : 'outd'))}
-            <div style="min-width:0"><div class="nm">${esc(p.name)}</div>${status}</div>
+            <div style="min-width:0"><div class="nm">${esc(p.name)}${bday ? ' 🎂' : ''}</div>${status}</div>
             <button class="adm-btn ${p.signedIn ? 'warn' : 'go'} toggle" data-act="toggle">${p.signedIn ? 'Sign out' : 'Sign in'}</button></div>
-        <div class="creds"><span class="cred ${p.hasCard ? 'on' : ''}">💳 ${p.hasCard ? 'card' : 'no card'}</span><span class="cred ${p.hasPhone ? 'on' : ''}">📱 ${p.hasPhone ? 'phone' : 'no phone'}</span><span class="cred ${p.hasTag ? 'on' : ''}">🔑 ${p.hasTag ? 'key tag' : 'no tag'}</span>${pres}</div>
+        <div class="creds"><span class="cred ${p.hasCard ? 'on' : ''}">💳 ${p.hasCard ? 'card' : 'no card'}</span><span class="cred ${p.hasPhone ? 'on' : ''}">📱 ${p.hasPhone ? 'phone' : 'no phone'}</span><span class="cred ${p.hasTag ? 'on' : ''}">🔑 ${p.hasTag ? 'key tag' : 'no tag'}</span>${pres}
+            <label class="bday-tick" title="Balloons, ribbons and a Happy Birthday banner on the door screen today; switches itself off at midnight"><input type="checkbox" data-act="bday"${bday ? ' checked' : ''}> 🎂 Celebrate today</label></div>
+        <div class="bday-row" title="Saved birthday (day and month only, no year). The door screen celebrates by itself on the day, every year.">
+            <span>🎂 Birthday</span>
+            <select data-act="bdDay" aria-label="Birthday day for ${esc(p.name)}"><option value="">day</option>${Array.from({ length: 31 }, (_, i) => `<option value="${String(i + 1).padStart(2, '0')}"${saved && Number(saved.slice(3)) === i + 1 ? ' selected' : ''}>${i + 1}</option>`).join('')}</select>
+            <select data-act="bdMon" aria-label="Birthday month for ${esc(p.name)}"><option value="">month</option>${MONTHS.map((m, i) => `<option value="${String(i + 1).padStart(2, '0')}"${saved && Number(saved.slice(0, 2)) === i + 1 ? ' selected' : ''}>${m}</option>`).join('')}</select>
+            ${saved ? `<span class="bd-saved">✓ ${esc(bdayLabel(saved))} · every year</span><button class="adm-btn ghost bd-clear" data-act="bdClear" title="Forget this birthday">✕</button>` : '<span class="bd-saved muted">not set</span>'}
+        </div>
         <input class="card" autocomplete="off" aria-label="Card number for ${esc(p.name)}" placeholder="${p.hasCard ? 'Card set · tap a new one to replace, or CLEAR' : 'Tap a card on the USB reader, then Enter'}">
         <div class="p-actions"><button class="adm-btn" data-act="history">History</button>${card ? `<button class="adm-btn go" data-act="give">Give card ${esc(card.uid)}</button>` : ''}
             <button class="adm-btn" data-act="safe" title="Issue (or rotate) this person's personal &quot;I'm SAFE&quot; link for their phone">I'm SAFE link</button><button class="adm-btn bad" data-act="remove">Remove</button></div>
@@ -213,6 +250,25 @@ function personCard(p, d) {
         }).catch(showError);
     };
     act('remove').onclick = () => { if (confirm(`Remove ${p.name} from the door screen? Their history is kept.`)) api('DELETE', `/api/people/${p.id}`).then(r => { render(r); toast(`${p.name} removed.`); }).catch(showError); };
+    act('bday').onchange = (e) => {
+        const on = e.target.checked; e.target.blur();
+        api('PUT', `/api/people/${p.id}/birthday`, { on }).then(r => {
+            render(r);
+            toast(on ? `🎉 Happy Birthday ${p.name.split(' ')[0]}! Balloons are up on the door screen until midnight.` : `Birthday celebration for ${p.name} switched off for today.`);
+        }).catch(error => { e.target.checked = !on; showError(error); });
+    };
+    const saveDate = (date) => api('PUT', `/api/people/${p.id}/birthday`, { date }).then(r => {
+        staffBirthdays = r.staffBirthdays || {};
+        document.activeElement?.blur();
+        render(r);
+        toast(date ? `🎂 ${p.name}'s birthday saved: ${bdayLabel(date)}. The door screen will celebrate it every year.` : `${p.name}'s birthday removed.`);
+    }).catch(showError);
+    const pickDate = () => {
+        const dd = act('bdDay').value, mm = act('bdMon').value;
+        if (dd && mm) saveDate(`${mm}-${dd}`);
+    };
+    act('bdDay').onchange = pickDate; act('bdMon').onchange = pickDate;
+    if (act('bdClear')) act('bdClear').onclick = () => { if (confirm(`Forget ${p.name}'s birthday?`)) saveDate(''); };
     if (act('give')) act('give').onclick = () => giveCard(p);
     const tl = el.querySelector('.timeline');
     const fillTimeline = (t) => {
@@ -521,7 +577,7 @@ async function loadAll() {
     try {
         await refresh();
         $('#pinPanel').classList.add('hidden'); $('#app').classList.remove('hidden'); document.body.classList.remove('locked');
-        await Promise.allSettled([loadHealth(), loadExpected(), loadPresence(), loadDevices()]);
+        await Promise.allSettled([loadHealth(), loadExpected(), loadPresence(), loadDevices(), loadBirthdays()]);
     } catch (error) { if (error.status === 401) showGate(); else { setLive(false); showError(error); } }
 }
 $('#pinForm').onsubmit = (e) => {
@@ -537,5 +593,5 @@ showTab(location.hash.slice(1));
 loadAll();
 // Live: the register's change stream refreshes the people and the feed at once; the slower panels every minute.
 SI.live(() => { if (!gateShown()) refresh().catch(error => { setLive(false); if (error.status === 401) showGate(); }); }, { fallbackMs: 30_000, debounceMs: 600 });
-setInterval(() => { if (!gateShown()) Promise.allSettled([loadHealth(), loadExpected(), loadPresence(), loadDevices()]); }, 60_000);
+setInterval(() => { if (!gateShown()) Promise.allSettled([loadHealth(), loadExpected(), loadPresence(), loadDevices(), loadBirthdays()]); }, 60_000);
 setInterval(() => { if (state && !gateShown()) renderToday(state, null); }, 60_000);   // keep "· 2h 14m" true

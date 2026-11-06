@@ -189,7 +189,22 @@ async function main() {
             if (await page.evaluate(`document.querySelector('#startBtn').classList.contains('hidden')`)) throw new Error('START ROLL CALL hidden');
             page.close();
         });
+        await step('kiosk birthday: a person ticked for today gets the banner, balloons and their tile; nothing blocks a tap', async () => {
+            await api('PUT', `/api/people/${bob.id}/birthday`, { on: true });
+            const page = await cdpPage(cdpPort, `${base}/`);
+            await page.until(`!document.querySelector('#bday').classList.contains('hidden') && /Happy Birthday, Bob!/.test(document.querySelector('#bdayText').textContent)`, 'birthday banner for Bob');
+            await page.until(`document.querySelectorAll('#party .k-balloon').length > 0 && document.querySelector('#people .person.bday')?.dataset.name === 'bob sample'`, 'balloons + Bob\'s tile');
+            if ((await page.evaluate(`getComputedStyle(document.querySelector('#party')).pointerEvents`)) !== 'none') throw new Error('the party layer could take taps');
+            page.close();
+        });
         const rc = (await api('POST', '/api/fire/start', { source: 'fire-page', by: 'e2e' })).rollcall;
+
+        await step('kiosk birthday: the party disappears the moment a roll call starts', async () => {
+            const page = await cdpPage(cdpPort, `${base}/`);
+            await page.until(`!document.querySelector('#rollcallBanner').classList.contains('hidden')`, 'roll call banner');
+            await page.until(`document.querySelector('#bday').classList.contains('hidden') && document.querySelector('#party').children.length === 0 && !document.querySelector('#people .person.bday')`, 'no party during a roll call');
+            page.close();
+        });
 
         await step('fire page: a marshal SAFE tick reaches the register', async () => {
             const page = await cdpPage(cdpPort, `${base}/fire`);
