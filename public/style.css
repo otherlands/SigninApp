@@ -1190,8 +1190,7 @@ body.kiosk .banner { padding: 12px 18px; margin-bottom: 12px; }
 .k-party { position: fixed; inset: 0; z-index: 60; pointer-events: none; overflow: hidden; }
 .k-bday { position: relative; display: flex; align-items: center; gap: 16px; padding: 10px 22px; margin-bottom: 12px; border-radius: 20px; overflow: hidden;
           border: 1px solid rgba(255, 204, 51, .6); box-shadow: 0 10px 40px rgba(255, 95, 143, .35);
-          background: linear-gradient(100deg, rgba(255, 95, 143, .35), rgba(124, 92, 255, .35), rgba(0, 212, 255, .3), rgba(255, 204, 51, .35)); background-size: 300% 100%;
-          animation: k-shift 8s ease-in-out infinite alternate; }
+          background: linear-gradient(100deg, rgba(255, 95, 143, .35), rgba(124, 92, 255, .35), rgba(0, 212, 255, .3), rgba(255, 204, 51, .35)); }
 .k-bday::after { content: ''; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .25) 50%, transparent 70%);
                  transform: translateX(-100%); animation: k-shine 3.5s ease-in-out infinite; }
 .k-bday b { display: block; font-size: 1.7rem; font-weight: 900; letter-spacing: .01em; color: #fff; text-shadow: 0 2px 14px rgba(255, 95, 143, .6); }
@@ -1206,18 +1205,17 @@ body.kiosk .banner { padding: 12px 18px; margin-bottom: 12px; }
              border-top: 2px solid rgba(255, 255, 255, .35); border-radius: 0 0 50% 50% / 0 0 30px 30px; }
 .k-bunting i { width: 3.2%; height: 30px; background: var(--c); clip-path: polygon(0 0, 100% 0, 50% 100%); transform-origin: 50% 0;
                transform: translateY(calc((13 - (var(--i) - 12.5) * (var(--i) - 12.5) / 13) * 1px));
-               animation: k-flag 2.6s ease-in-out calc(var(--i) * -.17s) infinite; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .35)); }
-@keyframes k-flag { 50% { rotate: 7deg; } }
+               }
 
 /* balloons float up, swaying */
 .k-balloon { position: absolute; left: var(--x); bottom: -190px; width: 62px; height: 76px; border-radius: 50% 50% 47% 53% / 56% 56% 44% 44%;
              background: radial-gradient(circle at 32% 26%, rgba(255, 255, 255, .8), rgba(255, 255, 255, 0) 20%),
                          radial-gradient(circle at 50% 55%, var(--c), color-mix(in srgb, var(--c) 55%, #000) 100%);
-             box-shadow: inset -6px -8px 16px rgba(0, 0, 0, .25), 0 8px 24px rgba(0, 0, 0, .25); opacity: .92;
+             box-shadow: inset -6px -8px 16px rgba(0, 0, 0, .25); opacity: .92;
              animation: k-rise var(--d) linear var(--dl) infinite; will-change: transform; }
 .k-balloon::after { content: ''; position: absolute; left: 50%; bottom: -7px; width: 10px; height: 9px; translate: -50% 0; background: color-mix(in srgb, var(--c) 70%, #000); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 .k-balloon b { position: absolute; left: 50%; top: 100%; width: 2px; height: 110px; margin-top: 6px; background: linear-gradient(rgba(255, 255, 255, .55), rgba(255, 255, 255, 0));
-               transform-origin: top; animation: k-string 2.2s ease-in-out infinite alternate; }
+               transform-origin: top; }
 @keyframes k-rise {
     0% { transform: translate(0, 0) rotate(-5deg) scale(var(--s)); }
     25% { transform: translate(var(--sw), -30vh) rotate(5deg) scale(var(--s)); }
@@ -1225,11 +1223,10 @@ body.kiosk .banner { padding: 12px 18px; margin-bottom: 12px; }
     75% { transform: translate(calc(var(--sw) * -1), -90vh) rotate(4deg) scale(var(--s)); }
     100% { transform: translate(0, -125vh) rotate(-3deg) scale(var(--s)); }
 }
-@keyframes k-string { to { rotate: 8deg; } }
 
 /* curly ribbons drift down */
 .k-ribbon { position: absolute; left: var(--x); top: -160px; width: 22px; height: 130px; fill: none; stroke: currentColor; stroke-width: 4; stroke-linecap: round;
-            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .3)); animation: k-drift var(--d) linear var(--dl) infinite; will-change: transform; }
+            animation: k-drift var(--d) linear var(--dl) infinite; will-change: transform; }
 @keyframes k-drift {
     0% { transform: translate(0, 0) rotate(-20deg); }
     50% { transform: translate(var(--sw), 60vh) rotate(25deg); }

@@ -35,13 +35,13 @@ function renderParty(data) {
     const flags = Array.from({ length: 26 }, (_, i) => `<i style="--c:${PARTY_COLOURS[i % PARTY_COLOURS.length]};--i:${i}"></i>`).join('');
     bits.push(`<div class="k-bunting">${flags}</div>`);
     if (!reduce) {
-        for (let i = 0; i < 14; i++) {
+        for (let i = 0; i < 11; i++) {
             bits.push(`<i class="k-balloon" style="--x:${rnd(2, 94).toFixed(1)}%;--d:${rnd(13, 22).toFixed(1)}s;--dl:-${rnd(0, 20).toFixed(1)}s;--c:${pick(PARTY_COLOURS)};--s:${rnd(.75, 1.25).toFixed(2)};--sw:${rnd(18, 46).toFixed(0)}px"><b></b></i>`);
         }
         for (let i = 0; i < 9; i++) {
             bits.push(`<svg class="k-ribbon" viewBox="0 0 24 140" style="--x:${rnd(2, 96).toFixed(1)}%;--d:${rnd(9, 15).toFixed(1)}s;--dl:-${rnd(0, 14).toFixed(1)}s;--sw:${rnd(30, 80).toFixed(0)}px;color:${pick(PARTY_COLOURS)}"><path d="M12 2 C 24 14, 0 24, 12 36 S 0 58, 12 70 S 24 92, 12 104 S 0 126, 12 138" /></svg>`);
         }
-        for (let i = 0; i < 40; i++) {
+        for (let i = 0; i < 28; i++) {
             bits.push(`<i class="k-confetti" style="--x:${rnd(0, 100).toFixed(1)}%;--d:${rnd(6, 12).toFixed(1)}s;--dl:-${rnd(0, 12).toFixed(1)}s;--c:${pick(PARTY_COLOURS)};--sw:${rnd(-60, 60).toFixed(0)}px;--r:${rnd(360, 1080).toFixed(0)}deg"></i>`);
         }
     }
