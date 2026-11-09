@@ -103,8 +103,25 @@ public class MainActivity extends Activity {
     }
 
     // ------------------------------------------------------------------ screen
+    private ScrollView shown;
+    private String shownState = "";
+
+    /** Everything the screen shows; the 2-second tick only redraws when this changes (and keeps the scroll position). */
+    private String screenState() {
+        boolean notif = Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+        return Prefs.configured(this) + "|" + Prefs.getBool(this, "signedIn") + "|" + Prefs.get(this, "since") + "|" + Prefs.get(this, "watch") + "|"
+                + Prefs.get(this, "problem") + "|" + Prefs.get(this, "rcId") + "|" + Prefs.get(this, "rcMark") + "|" + Prefs.officeN(this) + "|"
+                + Prefs.outsideUrl(this) + "|" + notif + "|" + checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) + "|"
+                + checkSelfPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION) + "|"
+                + (Build.VERSION.SDK_INT < 34 || getSystemService(NotificationManager.class).canUseFullScreenIntent()) + "|"
+                + getSystemService(PowerManager.class).isIgnoringBatteryOptimizations(getPackageName()) + "|" + (msg == null ? "" : msg.getText());
+    }
+
     private void render() {
-        ScrollView scroll = new ScrollView(this);
+        String state = screenState();
+        if (shown != null && state.equals(shownState)) return;
+        final int y = shown == null ? 0 : shown.getScrollY();
+        final ScrollView scroll = new ScrollView(this);
         scroll.setBackgroundColor(Ui.BG);
         scroll.setFillViewport(true);
         root = new LinearLayout(this);
@@ -121,6 +138,9 @@ public class MainActivity extends Activity {
 
         if (!Prefs.configured(this)) renderSetup(); else renderStatus();
         setContentView(scroll);
+        if (y > 0) scroll.post(() -> scroll.scrollTo(0, y));
+        shown = scroll;
+        shownState = state;
     }
 
     private void renderSetup() {
