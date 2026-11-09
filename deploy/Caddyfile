@@ -9,7 +9,8 @@
 #
 # Install with deploy/install-caddy.sh. Nothing here is active until that script is run.
 #
-# BEFORE THIS CAN WORK (verified 2026-10-19, none of it is in place yet):
+# LIVE since 2026-11-09 on CT106 (GoDaddy A record -> 46.37.61.233, UDM forwards TCP 443+80 on WAN1 to 192.168.101.102,
+# LAN DNS -> 192.168.101.102, PUBLIC_URL set). The original prerequisites, as written on 2026-10-19:
 #   1. Public DNS: signin.eright.co.uk does not exist. eright.co.uk is on GoDaddy nameservers (ns13/ns14.domaincontrol.com).
 #      Create an A record -> the site's public address (46.37.62.121 as seen from the office on 2026-10-19; confirm it is
 #      static) and forward TCP 80 + 443 on the UniFi gateway to this server. (Or the DNS-01 variant: build Caddy with
